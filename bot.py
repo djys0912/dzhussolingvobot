@@ -95,8 +95,6 @@ async def start_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
     random.shuffle(options)
 
     # Сохраняем правильный ответ в контексте пользователя
-    if not context.user_data:
-        context.user_data = {}
     context.user_data['correct_answer'] = correct_answer
     context.user_data['current_question'] = question
 
@@ -114,7 +112,7 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_answer = update.message.text
     
     # Проверяем, есть ли в контексте сохраненный правильный ответ
-    if context.user_data and 'correct_answer' in context.user_data:
+    if 'correct_answer' in context.user_data:
         correct_answer = context.user_data['correct_answer']
         if user_answer == correct_answer:
             await update.message.reply_text("Правильный ответ! Отлично! ✅")
@@ -130,8 +128,10 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Что дальше?", reply_markup=reply_markup)
         
         # Очищаем данные после проверки
-        del context.user_data['correct_answer']
-        del context.user_data['current_question']
+        if 'correct_answer' in context.user_data:
+            del context.user_data['correct_answer']
+        if 'current_question' in context.user_data:
+            del context.user_data['current_question']
     else:
         # Если нет данных в контексте, обрабатываем как обычное сообщение
         await handle_message(update, context)
@@ -185,7 +185,7 @@ def main():
     
     # Запускаем бота
     logger.info("Запуск бота...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
