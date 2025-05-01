@@ -4,7 +4,7 @@ import os
 import logging
 from dotenv import load_dotenv
 load_dotenv()
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import random
 
@@ -14,6 +14,9 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+# URL вашего веб-приложения (замените на свой после загрузки на хостинг)
+WEBAPP_URL = "https://djys0912.github.io/dzhussolingvobot/german_app.html"
 
 # Функция для загрузки данных из Google Таблицы или локального файла
 def load_data():
@@ -109,6 +112,34 @@ def load_data():
                         "Неверный 1": "груша",
                         "Неверный 2": "банан",
                         "Неверный 3": "апельсин"
+                    },
+                    {
+                        "Слово (DE)": "die Lampe",
+                        "Правильный ответ": "лампа",
+                        "Неверный 1": "диван",
+                        "Неверный 2": "окно",
+                        "Неверный 3": "стул"
+                    },
+                    {
+                        "Слово (DE)": "die Tür",
+                        "Правильный ответ": "дверь",
+                        "Неверный 1": "стена",
+                        "Неверный 2": "крыша",
+                        "Неверный 3": "пол"
+                    },
+                    {
+                        "Слово (DE)": "das Fenster",
+                        "Правильный ответ": "окно",
+                        "Неверный 1": "дверь",
+                        "Неверный 2": "штора",
+                        "Неверный 3": "стекло"
+                    },
+                    {
+                        "Слово (DE)": "der Stuhl",
+                        "Правильный ответ": "стул",
+                        "Неверный 1": "табурет",
+                        "Неверный 2": "полка",
+                        "Неверный 3": "шкаф"
                     }
                 ]
                 # Сохраняем тестовые данные локально
@@ -130,91 +161,220 @@ def load_data():
         
     return data
 
-# Функция для тренировки слов
-async def start_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    words_data = load_data()  # Загружаем данные
+# Функция для загрузки пользовательских данных
+def load_user_data(user_id):
+    file_path = f'user_data_{user_id}.json'
     
-    # Если у пользователя нет списка слов для изучения, создаем его
-    if 'training_words' not in context.user_data:
+    if os.path.exists(file_path):
+        with open(file_path, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    
+    # Создаем новый профиль пользователя
+    user_data = {
+        "word_scores": {},      # Прогресс по словам
+        "known_words": [],      # Выученные слова
+        "incorrect_words": [],  # Слова с ошибками для повторения
+        "current_words": []     # Текущий набор слов для изучения
+    }
+    
+    return user_data
+
+# Функция для сохранения пользовательских данных
+def save_user_data(user_id, user_data):
+    file_path = f'user_data_{user_id}.json'
+    
+    with open(file_path, 'w', encoding='utf-8') as file:
+        json.dump(user_data, file, ensure_ascii=False, indent=4)
+
+# Функция для запуска веб-приложения
+async def start_web_app(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    web_app = WebAppInfo(url=WEBAPP_URL)
+    keyboard = [
+        [InlineKeyboardButton("Открыть приложение для изучения немецкого", web_app=web_app)]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        "Привет! Нажмите кнопку ниже, чтобы открыть приложение для изучения немецкого языка в стиле iOS:",
+        reply_markup=reply_markup
+    )
+
+# Функция для начала тренировки слов (классический вариант)
+async def start_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_data = load_user_data(user_id)
+    words_data = load_data()
+    
+    # Если у пользователя нет списка слов для изучения или мы запрашиваем новые слова, создаем его
+    if not user_data["current_words"] or context.user_data.get('reset_words', False):
+        # Фильтруем только слова, которые еще не выучены
+        available_words = [word for word in words_data if word["Слово (DE)"] not in user_data["known_words"]]
+        
+        if not available_words:
+            await update.message.reply_text(
+                "Поздравляю! Вы выучили все доступные слова! 🎉"
+            )
+            return
+        
         # Выбираем 10 случайных слов для обучения (или меньше, если слов меньше 10)
-        context.user_data['training_words'] = random.sample(words_data, min(10, len(words_data)))
-        context.user_data['current_word_index'] = 0
+        user_data["current_words"] = random.sample(available_words, min(10, len(available_words)))
+        user_data["current_word_index"] = 0
+        context.user_data['reset_words'] = False
     
     # Получаем текущее слово
-    word_index = context.user_data['current_word_index']
-    if word_index < len(context.user_data['training_words']):
-        word = context.user_data['training_words'][word_index]
+    word_index = user_data.get("current_word_index", 0)
+    
+    if word_index < len(user_data["current_words"]):
+        word_data = user_data["current_words"][word_index]
         
         # Отправляем вопрос с четырьмя вариантами
-        question = word['Слово (DE)']
-        correct_answer = word['Правильный ответ']
-        options = [correct_answer, word['Неверный 1'], word['Неверный 2'], word['Неверный 3']]
+        question = word_data["Слово (DE)"]
+        correct_answer = word_data["Правильный ответ"]
+        options = [
+            correct_answer, 
+            word_data["Неверный 1"], 
+            word_data["Неверный 2"], 
+            word_data["Неверный 3"]
+        ]
         random.shuffle(options)
 
-        # Сохраняем правильный ответ
+        # Сохраняем информацию для проверки ответа
         context.user_data['correct_answer'] = correct_answer
         context.user_data['current_question'] = question
-
+        
+        # Получаем прогресс по текущему слову
+        word_score = user_data["word_scores"].get(question, 0)
+        
         # Отправляем клавиатуру с вариантами
         keyboard = [[option] for option in options]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
         await update.message.reply_text(
-            f"Слово {word_index + 1}/{len(context.user_data['training_words'])}: {question}?",
+            f"Слово {word_index + 1}/{len(user_data['current_words'])}: {question}?\n"
+            f"Прогресс: {word_score}/500 баллов",
             reply_markup=reply_markup
         )
     else:
         # Все слова пройдены, предлагаем начать заново
         keyboard = [
-            ["📚 Новые слова", "🔄 Повторить эти же"],
-            ["🔙 Вернуться в меню"]
+            ["📚 Новые слова", "🔙 Вернуться в меню"],
+            ["📱 Открыть приложение"]
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text(
-            "Отлично! Ты прошел все слова в этом наборе. Что дальше?",
+            "Отлично! Вы прошли все слова в этом наборе. Что дальше?",
             reply_markup=reply_markup
         )
+    
+    save_user_data(user_id, user_data)
 
 # Обработчик ответа
 async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_data = load_user_data(user_id)
     user_answer = update.message.text
     
     # Проверяем, есть ли в контексте сохраненный правильный ответ
-    if 'correct_answer' in context.user_data:
+    if 'correct_answer' in context.user_data and 'current_question' in context.user_data:
         correct_answer = context.user_data['correct_answer']
+        current_question = context.user_data['current_question']
+        
         if user_answer == correct_answer:
-            await update.message.reply_text("Правильный ответ! Отлично! ✅")
+            # Обновляем счет для этого слова
+            user_data["word_scores"][current_question] = user_data["word_scores"].get(current_question, 0) + 100
+            
+            await update.message.reply_text(
+                f"Правильный ответ! +100 баллов! ✅\n"
+                f"Общий прогресс для этого слова: {user_data['word_scores'].get(current_question, 0)}/500 баллов"
+            )
+            
+            # Если набрали 500 баллов, помечаем слово как выученное
+            if user_data["word_scores"].get(current_question, 0) >= 500:
+                if current_question not in user_data["known_words"]:
+                    user_data["known_words"].append(current_question)
+                    await update.message.reply_text(
+                        f"Поздравляем! Вы выучили слово '{current_question}'! 🎓"
+                    )
+                
+                # Убираем это слово из текущего списка
+                current_index = user_data.get("current_word_index", 0)
+                if current_index < len(user_data["current_words"]):
+                    user_data["current_words"].pop(current_index)
+                    # Индекс не меняем, так как следующее слово "сдвинется" на текущую позицию
+                else:
+                    user_data["current_word_index"] = 0
         else:
-            await update.message.reply_text(f"Неправильный ответ. Правильный: {correct_answer} ❌")
+            await update.message.reply_text(
+                f"Неправильный ответ. Правильный: {correct_answer} ❌"
+            )
+            
+            # Добавляем слово в список для повторения
+            if current_question not in user_data["incorrect_words"]:
+                user_data["incorrect_words"].append(current_question)
+            
+            # Переходим к следующему слову
+            user_data["current_word_index"] = (user_data.get("current_word_index", 0) + 1) % len(user_data["current_words"])
         
-        # Очищаем данные текущего вопроса
-        if 'correct_answer' in context.user_data:
-            del context.user_data['correct_answer']
-        if 'current_question' in context.user_data:
-            del context.user_data['current_question']
+        # Очищаем данные после проверки
+        del context.user_data['correct_answer']
+        del context.user_data['current_question']
         
-        # Увеличиваем индекс текущего слова
-        context.user_data['current_word_index'] += 1
+        save_user_data(user_id, user_data)
         
-        # Переходим к следующему слову
-        await start_training(update, context)
+        # Показываем клавиатуру с действиями
+        keyboard = [
+            ["📚 Ещё слово", "🔙 Вернуться в меню"],
+            ["📱 Открыть приложение"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text(
+            "Что дальше?",
+            reply_markup=reply_markup
+        )
     else:
         # Если нет данных в контексте, обрабатываем как обычное сообщение
         await handle_message(update, context)
 
+# Функция для показа статистики
+async def show_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_data = load_user_data(user_id)
+    
+    known_words = len(user_data["known_words"])
+    incorrect_words = len(user_data["incorrect_words"])
+    total_score = sum(user_data["word_scores"].values())
+    
+    await update.message.reply_text(
+        f"📊 Ваша статистика:\n\n"
+        f"🎓 Выученных слов: {known_words}\n"
+        f"❌ Слов с ошибками: {incorrect_words}\n"
+        f"🔢 Общий счет: {total_score} баллов"
+    )
+    
+    # Показываем клавиатуру с действиями
+    keyboard = [
+        ["📚 Учить слова", "🔙 Вернуться в меню"],
+        ["📱 Открыть приложение"]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    await update.message.reply_text(
+        "Что дальше?",
+        reply_markup=reply_markup
+    )
+
 # Обработчик команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Создаем более полную клавиатуру с дополнительными опциями
+    # Создаем клавиатуру с основными командами
     keyboard = [
         ["📚 Учить слова", "🎯 Учить артикли"],
-        ["🔄 Повторение", "🧩 Составление предложений"],
-        ["📊 Статистика", "⭐ Достижения"],
-        ["⚙️ Настройки", "❓ Помощь"]
+        ["📊 Статистика", "📱 Открыть приложение"]
     ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
     await update.message.reply_text(
-        "Привет! Я твой бот для изучения немецкого языка 🇩🇪.\n\nВыбери, что хочешь сделать:",
+        "Привет! Я твой бот для изучения немецкого языка 🇩🇪.\n\n"
+        "Вы можете использовать классический интерфейс бота или открыть приложение с дизайном в стиле iOS!\n\n"
+        "Выберите, что хочешь сделать:",
         reply_markup=reply_markup
     )
 
@@ -222,34 +382,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
-    if text == "📚 Учить слова" or text == "📚 Еще слово":
+    if text == "📚 Учить слова" or text == "📚 Новые слова" or text == "📚 Ещё слово":
         # Сбрасываем список слов для обучения, чтобы начать заново
-        if 'training_words' in context.user_data:
-            del context.user_data['training_words']
-        await start_training(update, context)  # Запуск тренировки
-    elif text == "📚 Новые слова":
-        # Сбрасываем список слов для обучения, чтобы выбрать новые
-        if 'training_words' in context.user_data:
-            del context.user_data['training_words']
-        await start_training(update, context)
-    elif text == "🔄 Повторить эти же":
-        # Сбрасываем только индекс, сохраняя те же слова
-        context.user_data['current_word_index'] = 0
+        if text == "📚 Новые слова":
+            context.user_data['reset_words'] = True
         await start_training(update, context)
     elif text == "🎯 Учить артикли":
         await update.message.reply_text("Скоро начнём тренировку по артиклям!")
-    elif text == "📈 Статистика" or text == "📊 Статистика":
-        await update.message.reply_text("Твоя статистика скоро будет здесь!")
-    elif text == "⭐ Достижения":
-        await update.message.reply_text("Здесь будут твои достижения!")
-    elif text == "🔄 Повторение":
-        await update.message.reply_text("Режим повторения в разработке!")
-    elif text == "🧩 Составление предложений":
-        await update.message.reply_text("Режим составления предложений в разработке!")
-    elif text == "⚙️ Настройки":
-        await update.message.reply_text("Настройки пока в разработке.")
-    elif text == "❓ Помощь":
-        await update.message.reply_text("Чем я могу помочь?\n\n- 📚 Учить слова: Тренировка новых слов немецкого языка\n- 🎯 Учить артикли: Тренировка артиклей немецких существительных\n- 🔄 Повторение: Повтор ранее изученных слов\n- 📊 Статистика: Твой прогресс в изучении")
+    elif text == "📊 Статистика":
+        await show_statistics(update, context)
+    elif text == "📱 Открыть приложение":
+        await start_web_app(update, context)
     elif text == "🔙 Вернуться в меню":
         await start(update, context)
     else:
@@ -269,6 +412,8 @@ def main():
     
     # Регистрируем обработчики
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("app", start_web_app))
+    application.add_handler(CommandHandler("stats", show_statistics))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     # Запускаем бота
