@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Изучение немецкого языка</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        /* iOS-подобные стили */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background-color: #f2f2f7;
+            color: #000;
+            padding: 0;
+            margin: 0;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        /* Темная тема */
+        body.dark-theme {
+            background-color: #000;
+            color: #fff;
+        }
+        .header {
+            background-color: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(60, 60, 67, 0.15);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .dark-theme .header {
+            background-color: rgba(30, 30, 30, 0.7);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        .header h1 {
+            font-size: 17px;
+            font-weight: 600;
+            text-align: center;
+            flex-grow: 1;
+        }
+        .header-button {
+            color: #007AFF;
+            font-size: 17px;
+            font-weight: 400;
+            background: none;
+            border: none;
+            padding: 0 8px;
+            cursor: pointer;
+        }
+        .dark-theme .header-button {
+            color: #0A84FF;
+        }
+        .container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .word-card {
+            background-color: #fff;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            animation: slide-up 0.3s ease forwards;
+        }
+        .dark-theme .word-card {
+            background-color: #1c1c1e;
+            box-shadow: 0 1px 5px rgba(255, 255, 255, 0.05);
+        }
+        .word {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: #000;
+        }
+        .dark-theme .word {
+            color: #fff;
+        }
+        .progress-info {
+            font-size: 15px;
+            color: #8E8E93;
+            margin-bottom: 16px;
+        }
+        .progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background-color: #E5E5EA;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+        .dark-theme .progress-bar-container {
+            background-color: #3A3A3C;
+        }
+        .progress-bar {
+            height: 100%;
+            background-color: #34C759;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        .timer-container {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .timer {
+            font-size: 24px;
+            font-weight: 500;
+            color: #FF9500;
+        }
+        .dark-theme .timer {
+            color: #FF9F0A;
+        }
+        .option-buttons {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .option-button {
+            width: 100%;
+            padding: 16px;
+            background-color: #F2F2F7;
+            border: 1px solid #C7C7CC;
+            border-radius: 10px;
+            font-size: 17px;
+            font-weight: 500;
+            color: #000;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .dark-theme .option-button {
+            background-color: #2C2C2E;
+            border: 1px solid #38383A;
+            color: #fff;
+        }
+        .option-button:active {
+            background-color: #E5E5EA;
+            transform: scale(0.98);
+        }
+        .dark-theme .option-button:active {
+            background-color: #3A3A3C;
+        }
+        .buttons-row {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 16px;
+            gap: 12px;
+        }
+        .action-button {
+            flex: 1;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+        }
+        .primary-button {
+            background-color: #007AFF;
+            color: white;
+        }
+        .dark-theme .primary-button {
+            background-color: #0A84FF;
+        }
+        .secondary-button {
+            background-color: #F2F2F7;
+            color: #007AFF;
+            border: 1px solid #C7C7CC;
+        }
+        .dark-theme .secondary-button {
+            background-color: #2C2C2E;
+            color: #0A84FF;
+            border: 1px solid #38383A;
+        }
+        .correct {
+            background-color: #34C759 !important;
+            color: white !important;
+            border-color: #34C759 !important;
+        }
+        .dark-theme .correct {
+            background-color: #30D158 !important;
+            border-color: #30D158 !important;
+        }
+        .incorrect {
+            background-color: #FF3B30 !important;
+            color: white !important;
+            border-color: #FF3B30 !important;
+        }
+        .dark-theme .incorrect {
+            background-color: #FF453A !important;
+            border-color: #FF453A !important;
+        }
+        .tab-bar {
+            display: flex;
+            background-color: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(60, 60, 67, 0.15);
+            padding: 8px 0;
+        }
+        .dark-theme .tab-bar {
+            background-color: rgba(30, 30, 30, 0.7);
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        .tab {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 8px 0;
+            cursor: pointer;
+        }
+        .tab-icon {
+            font-size: 24px;
+            margin-bottom: 4px;
+            color: #8E8E93;
+        }
+        .tab-label {
+            font-size: 10px;
+            color: #8E8E93;
+        }
+        .tab.active .tab-icon,
+        .tab.active .tab-label {
+            color: #007AFF;
+        }
+        .dark-theme .tab.active .tab-icon,
+        .dark-theme .tab.active .tab-label {
+            color: #0A84FF;
+        }
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+        }
+        .modal.show {
+            opacity: 1;
+            visibility: visible;
+        }
+        .modal-content {
+            background-color: #fff;
+            border-radius: 14px;
+            width: 85%;
+            max-width: 340px;
+            padding: 20px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        }
+        .dark-theme .modal-content {
+            background-color: #2C2C2E;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+        }
+        .modal-title {
+            font-size: 17px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        .modal-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        /* Анимация для карточек */
+        @keyframes slide-up {
+            0% {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            100% {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        /* Скрытые экраны */
+        .screen {
+            display: none;
+            height: 100%;
+            flex-direction: column;
+            flex: 1;
+        }
+        .screen.active {
+            display: flex;
+        }
+        /* Список слов */
+        .word-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .word-list-item {
+            background-color: #fff;
+            border-radius: 10px;
+            padding: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
+        }
+        .dark-theme .word-list-item {
+            background-color: #1c1c1e;
+            box-shadow: 0 1px 5px rgba(255, 255, 255, 0.05);
+        }
+        .word-list-text {
+            display: flex;
+            flex-direction: column;
+        }
+        .word-list-item-title {
+            font-size: 17px;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        .word-list-item-subtitle {
+            font-size: 14px;
+            color: #8E8E93;
+        }
+        .checkmark {
+            color: #34C759;
+            font-size: 20px;
+        }
+        /* Статистика */
+        .stats-card {
+            background-color: #fff;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
+        }
+        .dark-theme .stats-card {
+            background-color: #1c1c1e;
+            box-shadow: 0 1px 5px rgba(255, 255, 255, 0.05);
+        }
+        .stats-title {
+            font-size: 17px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+        .stats-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .stats-label {
+            font-size: 15px;
+            color: #8E8E93;
+        }
+        .stats-value {
+            font-size: 15px;
+            font-weight: 500;
+        }
+        /* Переключение темы */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background-color: #000;
+                color: #fff;
+            }
+            .header {
+                background-color: rgba(30, 30, 30, 0.7);
+                border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+            }
+            .header-button {
+                color: #0A84FF;
+            }
+            .word-card {
+                background-color: #1c1c1e;
+                box-shadow: 0 1px 5px rgba(255, 255, 255, 0.05);
+            }
+            .word {
+                color: #fff;
+            }
+            .progress-bar-container {
+                background-color: #3A3A3C;
+            }
+            .timer {
+                color: #FF9F0A;
+            }
+            .option-button {
+                background-color: #2C2C2E;
+                border: 1px solid #38383A;
+                color: #fff;
+            }
+            .option-button:active {
+                background-color: #3A3A3C;
+            }
+            .primary-button {
+                background-color: #0A84FF;
+            }
+            .secondary-button {
+                background-color: #2C2C2E;
+                color: #0A84FF;
+                border: 1px solid #38383A;
+            }
+            .correct {
+                background-color: #30D158 !important;
+                border-color: #30D158 !important;
+            }
+            .incorrect {
+                background-color: #FF453A !important;
+                border-color: #FF453A !important;
+            }
+            .tab-bar {
+                background-color: rgba(30, 30, 30, 0.7);
+                border-top: 1px solid rgba(255, 255, 255, 0.15);
+            }
+            .tab.active .tab-icon,
+            .tab.active .tab-label {
+                color: #0A84FF;
+            }
+            .modal-content {
+                background-color: #2C2C2E;
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+            }
+            .word-list-item {
+                background-color: #1c1c1e;
+                box-shadow: 0 1px 5px rgba(255, 255, 255, 0.05);
+            }
+            .stats-card {
+                background-color: #1c1c1e;
+                box-shadow: 0 1px 5px rgba(255, 255, 255, 0.05);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Экран изучения слов -->
+    <div id="learn-screen" class="screen active">
+        <div class="header">
+            <button class="header-button" id="menu-button">Меню</button>
+            <h1>Изучение слов</h1>
+            <button class="header-button" id="stats-button">Статистика</button>
+        </div>
+        
+        <div class="container">
+            <div class="word-card">
+                <div class="word" id="current-word">der Tisch</div>
+                <div class="progress-info">Прогресс: <span id="word-progress">125</span>/500 баллов</div>
+                
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="progress-bar" style="width: 25%"></div>
+                </div>
+                
+                <div class="timer-container">
+                    <div class="timer" id="timer">10</div>
+                </div>
+                
+                <div class="option-buttons" id="options-container">
+                    <button class="option-button" data-correct="true">стол</button>
+                    <button class="option-button">стул</button>
+                    <button class="option-button">диван</button>
+                    <button class="option-button">полка</button>
+                </div>
+                
+                <div class="buttons-row">
+                    <button class="action-button secondary-button" id="known-button">Я знаю это слово</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="tab-bar">
+            <div class="tab active" data-screen="learn-screen">
+                <div class="tab-icon">📚</div>
+                <div class="tab-label">Учить</div>
+            </div>
+            <div class="tab" data-screen="known-screen">
+                <div class="tab-icon">🧠</div>
+                <div class="tab-label">Выученные</div>
+            </div>
+            <div class="tab" data-screen="errors-screen">
+                <div class="tab-icon">❌</div>
+                <div class="tab-label">Ошибки</div>
+            </div>
+            <div class="tab" data-screen="stats-screen">
+                <div class="tab-icon">📊</div>
+                <div class="tab-label">Статистика</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Экран выученных слов -->
+    <div id="known-screen" class="screen">
+        <div class="header">
+            <button class="header-button" id="back-button-known">Назад</button>
+            <h1>Выученные слова</h1>
+            <div style="width: 50px;"></div>
+        </div>
+        
+        <div class="container">
+            <div class="word-list" id="known-words-list">
+                <div class="word-list-item">
+                    <div class="word-list-text">
+                        <div class="word-list-item-title">der Hund</div>
+                        <div class="word-list-item-subtitle">Прогресс: 500/500 баллов</div>
+                    </div>
+                    <div class="checkmark">✓</div>
+                </div>
+                <div class="word-list-item">
+                    <div class="word-list-text">
+                        <div class="word-list-item-title">die Katze</div>
+                        <div class="word-list-item-subtitle">Прогресс: 500/500 баллов</div>
+                    </div>
+                    <div class="checkmark">✓</div>
+                </div>
+                <!-- Другие выученные слова будут добавляться динамически -->
+            </div>
+        </div>
+        
+        <div class="tab-bar">
+            <div class="tab" data-screen="learn-screen">
+                <div class="tab-icon">📚</div>
+                <div class="tab-label">Учить</div>
+            </div>
+            <div class="tab active" data-screen="known-screen">
+                <div class="tab-icon">🧠</div>
+                <div class="tab-label">Выученные</div>
+            </div>
+            <div class="tab" data-screen="errors-screen">
+                <div class="tab-icon">❌</div>
+                <div class="tab-label">Ошибки</div>
+            </div>
+            <div class="tab" data-screen="stats-screen">
+                <div class="tab-icon">📊</div>
+                <div class="tab-label">Статистика</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Экран слов с ошибками -->
+    <div id="errors-screen" class="screen">
+        <div class="header">
+            <button class="header-button" id="back-button-errors">Назад</button>
+            <h1>Слова с ошибками</h1>
+            <div style="width: 50px;"></div>
+        </div>
+        
+        <div class="container">
+            <div class="word-list" id="error-words-list">
+                <div class="word-list-item">
+                    <div class="word-list-text">
+                        <div class="word-list-item-title">das Fenster</div>
+                        <div class="word-list-item-subtitle">Прогресс: 150/500 баллов</div>
+                    </div>
+                    <button class="action-button primary-button" style="padding: 8px 12px; font-size: 14px;">Повторить</button>
+                </div>
+                <div class="word-list-item">
+                    <div class="word-list-text">
+                        <div class="word-list-item-title">die Lampe</div>
+                        <div class="word-list-item-subtitle">Прогресс: 220/500 баллов</div>
+                    </div>
+                    <button class="action-button primary-button" style="padding: 8px 12px; font-size: 14px;">Повторить</button>
+                </div>
+                <!-- Другие слова с ошибками будут добавляться динамически -->
+            </div>
+            
+            <button class="action-button primary-button" id="repeat-all-button" style="margin-top: 16px;">Повторить все слова с ошибками</button>
+        </div>
+        
+        <div class="tab-bar">
+            <div class="tab" data-screen="learn-screen">
+                <div class="tab-icon">📚</div>
+                <div class="tab-label">Учить</div>
+            </div>
+            <div class="tab" data-screen="known-screen">
+                <div class="tab-icon">🧠</div>
+                <div class="tab-label">Выученные</div>
+            </div>
+            <div class="tab active" data-screen="errors-screen">
+                <div class="tab-icon">❌</div>
+                <div class="tab-label">Ошибки</div>
+            </div>
+            <div class="tab" data-screen="stats-screen">
+                <div class="tab-icon">📊</div>
+                <div class="tab-label">Статистика</div>
+            </div>
+        </div>
+    </div>
+    <!-- Экран статистики -->
+    <div id="stats-screen" class="screen">
+        <div class="header">
+            <button class="header-button" id="back-button-stats">Назад</button>
+            <h1>Статистика</h1>
+            <div style="width: 50px;"></div>
+        </div>
+        
+        <div class="container">
+            <div class="stats-card">
+                <div class="stats-title">Общая статистика</div>
+                
+                <div class="stats-row">
+                    <div class="stats-label">Выучено слов:</div>
+                    <div class="stats-value" id="total-known-words">2</div>
+                </div>
+                
+                <div class="stats-row">
+                    <div class="stats-label">Слов в процессе:</div>
+                    <div class="stats-value" id="in-progress-words">8</div>
+                </div>
+                
+                <div class="stats-row">
+                    <div class="stats-label">Слов с ошибками:</div>
+                    <div class="stats-value" id="error-words-count">2</div>
+                </div>
+                
+                <div class="stats-row">
+                    <div class="stats-label">Всего набрано баллов:</div>
+                    <div class="stats-value" id="total-score">1250</div>
+                </div>
+            </div>
+            
+            <div class="stats-card">
+                <div class="stats-title">Топ слов</div>
+                
+                <div class="word-list" id="top-words-list">
+                    <div class="word-list-item">
+                        <div class="word-list-text">
+                            <div class="word-list-item-title">der Hund</div>
+                            <div class="word-list-item-subtitle">500 баллов</div>
+                        </div>
+                    </div>
+                    <div class="word-list-item">
+                        <div class="word-list-text">
+                            <div class="word-list-item-title">die Katze</div>
+                            <div class="word-list-item-subtitle">500 баллов</div>
+                        </div>
+                    </div>
+                    <!-- Другие топ-слова будут добавляться динамически -->
+                </div>
+            </div>
+        </div>
+        
+        <div class="tab-bar">
+            <div class="tab" data-screen="learn-screen">
+                <div class="tab-icon">📚</div>
+                <div class="tab-label">Учить</div>
+            </div>
+            <div class="tab" data-screen="known-screen">
+                <div class="tab-icon">🧠</div>
+                <div class="tab-label">Выученные</div>
+            </div>
+            <div class="tab" data-screen="errors-screen">
+                <div class="tab-icon">❌</div>
+                <div class="tab-label">Ошибки</div>
+            </div>
+            <div class="tab active" data-screen="stats-screen">
+                <div class="tab-icon">📊</div>
+                <div class="tab-label">Статистика</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Модальное окно с результатом ответа -->
+    <div id="result-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-title" id="result-title">Правильно!</div>
+            <div id="result-message">Вы получили 85 баллов.</div>
+            <div class="modal-buttons">
+                <button class="action-button primary-button" id="continue-button">Продолжить</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Инициализация Telegram WebApp
+        let tg = window.Telegram.WebApp;
+        tg.expand();
+
+        // Определение темы (светлая/темная)
+        if (tg.colorScheme === 'dark') {
+            document.body.classList.add('dark-theme');
+        }
+
+        // Данные о словах (в реальном приложении это будет загружаться с сервера)
+        const words = [
+            {
+                word: "der Tisch",
+                translation: "стол",
+                progress: 125,
+                options: ["стол", "стул", "диван", "полка"]
+            },
+            {
+                word: "das Fenster",
+                translation: "окно",
+                progress: 50,
+                options: ["окно", "дверь", "стена", "пол"]
+            },
+            {
+                word: "die Lampe",
+                translation: "лампа",
+                progress: 220,
+                options: ["лампа", "свет", "люстра", "торшер"]
+            },
+            {
+                word: "der Stuhl",
+                translation: "стул",
+                progress: 320,
+                options: ["стул", "табурет", "кресло", "диван"]
+            },
+            {
+                word: "die Tür",
+                translation: "дверь",
+                progress: 180,
+                options: ["дверь", "окно", "ворота", "калитка"]
+            }
+        ];
+
+        // Выученные слова
+        const knownWords = [
+            {
+                word: "der Hund",
+                progress: 500
+            },
+            {
+                word: "die Katze",
+                progress: 500
+            }
+        ];
+
+        // Слова с ошибками
+        const errorWords = [
+            {
+                word: "das Fenster",
+                progress: 150
+            },
+            {
+                word: "die Lampe",
+                progress: 220
+            }
+        ];
+
+        // Переменные для учета времени и текущего слова
+        let currentWordIndex = 0;
+        let timerInterval;
+        let timeLeft = 10;
+
+        // Функция для отображения текущего слова
+        function showCurrentWord() {
+            const currentWord = words[currentWordIndex];
+            document.getElementById('current-word').textContent = currentWord.word;
+            document.getElementById('word-progress').textContent = currentWord.progress;
+            document.getElementById('progress-bar').style.width = (currentWord.progress / 500 * 100) + '%';
+            // Очищаем и заполняем контейнер с опциями
+            const optionsContainer = document.getElementById('options-container');
+            optionsContainer.innerHTML = '';
+            // Перемешиваем варианты ответов
+            const shuffledOptions = [...currentWord.options].sort(() => 0.5 - Math.random());
+            shuffledOptions.forEach(option => {
+                const button = document.createElement('button');
+                button.className = 'option-button';
+                button.textContent = option;
+                button.dataset.correct = (option === currentWord.translation).toString();
+                button.addEventListener('click', handleOptionClick);
+                optionsContainer.appendChild(button);
+            });
+            // Сбрасываем и запускаем таймер
+            resetTimer();
+        }
+
+        // Функция для обработки нажатия на вариант ответа
+        function handleOptionClick(event) {
+            clearInterval(timerInterval);
+            const selectedOption = event.target;
+            const isCorrect = selectedOption.dataset.correct === 'true';
+            // Подсвечиваем выбранный вариант
+            if (isCorrect) {
+                selectedOption.classList.add('correct');
+                // Рассчитываем баллы на основе оставшегося времени
+                const earnedPoints = Math.floor(timeLeft * 10);
+                words[currentWordIndex].progress += earnedPoints;
+                if (words[currentWordIndex].progress > 500) {
+                    words[currentWordIndex].progress = 500;
+                }
+                // Показываем модальное окно с результатом
+                document.getElementById('result-title').textContent = 'Правильно!';
+                document.getElementById('result-message').textContent = `Вы получили ${earnedPoints} баллов. Общий прогресс: ${words[currentWordIndex].progress}/500`;
+            } else {
+                selectedOption.classList.add('incorrect');
+                // Подсвечиваем правильный вариант
+                const options = document.querySelectorAll('.option-button');
+                options.forEach(option => {
+                    if (option.dataset.correct === 'true') {
+                        option.classList.add('correct');
+                    }
+                });
+                // Добавляем слово в список ошибок, если его там нет
+                if (!errorWords.some(word => word.word === words[currentWordIndex].word)) {
+                    errorWords.push({
+                        word: words[currentWordIndex].word,
+                        progress: words[currentWordIndex].progress
+                    });
+                }
+                // Показываем модальное окно с результатом
+                document.getElementById('result-title').textContent = 'Неправильно';
+                document.getElementById('result-message').textContent = `Правильный ответ: ${words[currentWordIndex].translation}`;
+            }
+            // Отключаем кнопки
+            const options = document.querySelectorAll('.option-button');
+            options.forEach(option => {
+                option.removeEventListener('click', handleOptionClick);
+                option.style.pointerEvents = 'none';
+            });
+            // Показываем модальное окно
+            document.getElementById('result-modal').classList.add('show');
+        }
+
+        // Функция для сброса и запуска таймера
+        function resetTimer() {
+            clearInterval(timerInterval);
+            timeLeft = 10;
+            document.getElementById('timer').textContent = timeLeft;
+            timerInterval = setInterval(() => {
+                timeLeft -= 1;
+                document.getElementById('timer').textContent = timeLeft;
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    // Автоматически переходим к следующему слову при истечении времени
+                    goToNextWord();
+                }
+            }, 1000);
+        }
+
+        // Функция для перехода к следующему слову
+        function goToNextWord() {
+            currentWordIndex = (currentWordIndex + 1) % words.length;
+            showCurrentWord();
+        }
+
+        // Функция для отображения списка выученных слов
+        function showKnownWords() {
+            const knownWordsList = document.getElementById('known-words-list');
+            knownWordsList.innerHTML = '';
+            if (knownWords.length === 0) {
+                const emptyMessage = document.createElement('div');
+                emptyMessage.textContent = 'У вас пока нет выученных слов.';
+                emptyMessage.style.textAlign = 'center';
+                emptyMessage.style.padding = '20px';
+                emptyMessage.style.color = '#8E8E93';
+                knownWordsList.appendChild(emptyMessage);
+                return;
+            }
+            knownWords.forEach(word => {
+                const item = document.createElement('div');
+                item.className = 'word-list-item';
+                const textContainer = document.createElement('div');
+                textContainer.className = 'word-list-text';
+                const title = document.createElement('div');
+                title.className = 'word-list-item-title';
+                title.textContent = word.word;
+                const subtitle = document.createElement('div');
+                subtitle.className = 'word-list-item-subtitle';
+                subtitle.textContent = `Прогресс: ${word.progress}/500 баллов`;
+                textContainer.appendChild(title);
+                textContainer.appendChild(subtitle);
+                const checkmark = document.createElement('div');
+                checkmark.className = 'checkmark';
+                checkmark.textContent = '✓';
+                item.appendChild(textContainer);
+                item.appendChild(checkmark);
+                knownWordsList.appendChild(item);
+            });
+        }
+
+        // Функция для отображения списка слов с ошибками
+        function showErrorWords() {
+            const errorWordsList = document.getElementById('error-words-list');
+            errorWordsList.innerHTML = '';
+            if (errorWords.length === 0) {
+                const emptyMessage = document.createElement('div');
+                emptyMessage.textContent = 'У вас нет слов с ошибками.';
+                emptyMessage.style.textAlign = 'center';
+                emptyMessage.style.padding = '20px';
+                emptyMessage.style.color = '#8E8E93';
+                errorWordsList.appendChild(emptyMessage);
+                return;
+            }
+            errorWords.forEach(word => {
+                const item = document.createElement('div');
+                item.className = 'word-list-item';
+                const textContainer = document.createElement('div');
+                textContainer.className = 'word-list-text';
+                const title = document.createElement('div');
+                title.className = 'word-list-item-title';
+                title.textContent = word.word;
+                const subtitle = document.createElement('div');
+                subtitle.className = 'word-list-item-subtitle';
+                subtitle.textContent = `Прогресс: ${word.progress}/500 баллов`;
+                textContainer.appendChild(title);
+                textContainer.appendChild(subtitle);
+                const repeatButton = document.createElement('button');
+                repeatButton.className = 'action-button primary-button';
+                repeatButton.textContent = 'Повторить';
+                repeatButton.style.padding = '8px 12px';
+                repeatButton.style.fontSize = '14px';
+                item.appendChild(textContainer);
+                item.appendChild(repeatButton);
+                errorWordsList.appendChild(item);
+            });
+        }
+
+        // Функция для обновления статистики
+        function updateStatistics() {
+            document.getElementById('total-known-words').textContent = knownWords.length;
+            document.getElementById('in-progress-words').textContent = words.length;
+            document.getElementById('error-words-count').textContent = errorWords.length;
+            // Подсчитываем общее количество баллов
+            const totalScore =
+                knownWords.reduce((total, word) => total + word.progress, 0) +
+                words.reduce((total, word) => total + word.progress, 0);
+            document.getElementById('total-score').textContent = totalScore;
+            // Отображаем топ-слова
+            const topWordsList = document.getElementById('top-words-list');
+            topWordsList.innerHTML = '';
+            // Объединяем все слова и сортируем по прогрессу
+            const allWords = [...knownWords
