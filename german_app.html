@@ -7,452 +7,90 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        /* iOS-подобные стили */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            -webkit-tap-highlight-color: transparent;
-        }
-        body {
-            background-color: #f2f2f7;
-            color: #000;
-            padding: 0;
-            margin: 0;
-            height: 100vh;
-            width: 100vw;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-        /* Темная тема */
-        body.dark-theme {
-            background-color: #000;
-            color: #fff;
-        }
-        .header {
-            background-color: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            padding: 12px 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid rgba(60, 60, 67, 0.15);
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-        .dark-theme .header {
-            background-color: rgba(30, 30, 30, 0.7);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-        }
-        .header h1 {
-            font-size: 17px;
-            font-weight: 600;
-            text-align: center;
-            flex-grow: 1;
-        }
-        .header-button {
-            color: #007AFF;
-            font-size: 17px;
-            font-weight: 400;
-            background: none;
-            border: none;
-            padding: 0 8px;
-            cursor: pointer;
-        }
-        .dark-theme .header-button {
-            color: #0A84FF;
-        }
-        .container {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            padding: 16px;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-        }
-        .word-card {
-            background-color: #fff;
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 16px;
-            box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            animation: slide-up 0.3s ease forwards;
-        }
-        .dark-theme .word-card {
-            background-color: #1c1c1e;
-            box-shadow: 0 1px 5px rgba(255, 255, 255, 0.05);
-        }
-        .word {
-            font-size: 32px;
-            font-weight: 700;
-            margin-bottom: 8px;
-            color: #000;
-        }
-        .dark-theme .word {
-            color: #fff;
-        }
-        .progress-info {
-            font-size: 15px;
-            color: #8E8E93;
-            margin-bottom: 16px;
-        }
-        .progress-bar-container {
-            width: 100%;
-            height: 8px;
-            background-color: #E5E5EA;
-            border-radius: 4px;
-            overflow: hidden;
-            margin-bottom: 24px;
-        }
-        .dark-theme .progress-bar-container {
-            background-color: #3A3A3C;
-        }
-        .progress-bar {
-            height: 100%;
-            background-color: #34C759;
-            border-radius: 4px;
-            transition: width 0.3s ease;
-        }
-        .timer-container {
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        .timer {
-            font-size: 24px;
-            font-weight: 500;
-            color: #FF9500;
-        }
-        .dark-theme .timer {
-            color: #FF9F0A;
-        }
-        .option-buttons {
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        .option-button {
-            width: 100%;
-            padding: 16px;
-            background-color: #F2F2F7;
-            border: 1px solid #C7C7CC;
-            border-radius: 10px;
-            font-size: 17px;
-            font-weight: 500;
-            color: #000;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        .dark-theme .option-button {
-            background-color: #2C2C2E;
-            border: 1px solid #38383A;
-            color: #fff;
-        }
-        .option-button:active {
-            background-color: #E5E5EA;
-            transform: scale(0.98);
-        }
-        .dark-theme .option-button:active {
-            background-color: #3A3A3C;
-        }
-        .buttons-row {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 16px;
-            gap: 12px;
-        }
-        .action-button {
-            flex: 1;
-            padding: 14px 20px;
-            border: none;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            text-align: center;
-        }
-        .primary-button {
-            background-color: #007AFF;
-            color: white;
-        }
-        .dark-theme .primary-button {
-            background-color: #0A84FF;
-        }
-        .secondary-button {
-            background-color: #F2F2F7;
-            color: #007AFF;
-            border: 1px solid #C7C7CC;
-        }
-        .dark-theme .secondary-button {
-            background-color: #2C2C2E;
-            color: #0A84FF;
-            border: 1px solid #38383A;
-        }
-        .correct {
-            background-color: #34C759 !important;
-            color: white !important;
-            border-color: #34C759 !important;
-        }
-        .dark-theme .correct {
-            background-color: #30D158 !important;
-            border-color: #30D158 !important;
-        }
-        .incorrect {
-            background-color: #FF3B30 !important;
-            color: white !important;
-            border-color: #FF3B30 !important;
-        }
-        .dark-theme .incorrect {
-            background-color: #FF453A !important;
-            border-color: #FF453A !important;
-        }
-        .tab-bar {
-            display: flex;
-            background-color: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border-top: 1px solid rgba(60, 60, 67, 0.15);
-            padding: 8px 0;
-        }
-        .dark-theme .tab-bar {
-            background-color: rgba(30, 30, 30, 0.7);
-            border-top: 1px solid rgba(255, 255, 255, 0.15);
-        }
-        .tab {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 8px 0;
-            cursor: pointer;
-        }
-        .tab-icon {
-            font-size: 24px;
-            margin-bottom: 4px;
-            color: #8E8E93;
-        }
-        .tab-label {
-            font-size: 10px;
-            color: #8E8E93;
-        }
-        .tab.active .tab-icon,
-        .tab.active .tab-label {
-            color: #007AFF;
-        }
-        .dark-theme .tab.active .tab-icon,
-        .dark-theme .tab.active .tab-label {
-            color: #0A84FF;
-        }
-        .modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: rgba(0, 0, 0, 0.5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 100;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.3s, visibility 0.3s;
-        }
-        .modal.show {
-            opacity: 1;
-            visibility: visible;
-        }
-        .modal-content {
-            background-color: #fff;
-            border-radius: 14px;
-            width: 85%;
-            max-width: 340px;
-            padding: 20px;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-        }
-        .dark-theme .modal-content {
-            background-color: #2C2C2E;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-        }
-        .modal-title {
-            font-size: 17px;
-            font-weight: 600;
-            margin-bottom: 16px;
-            text-align: center;
-        }
-        .modal-buttons {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 20px;
-        }
-        /* Анимация для карточек */
-        @keyframes slide-up {
-            0% {
-                transform: translateY(20px);
-                opacity: 0;
-            }
-            100% {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-        /* Скрытые экраны */
-        .screen {
-            display: none;
-            height: 100%;
-            flex-direction: column;
-            flex: 1;
-        }
-        .screen.active {
-            display: flex;
-        }
-        /* Список слов */
-        .word-list {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        .word-list-item {
-            background-color: #fff;
-            border-radius: 10px;
-            padding: 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
-        }
-        .dark-theme .word-list-item {
-            background-color: #1c1c1e;
-            box-shadow: 0 1px 5px rgba(255, 255, 255, 0.05);
-        }
-        .word-list-text {
-            display: flex;
-            flex-direction: column;
-        }
-        .word-list-item-title {
-            font-size: 17px;
-            font-weight: 500;
-            margin-bottom: 4px;
-        }
-        .word-list-item-subtitle {
-            font-size: 14px;
-            color: #8E8E93;
-        }
-        .checkmark {
-            color: #34C759;
-            font-size: 20px;
-        }
-        /* Статистика */
-        .stats-card {
-            background-color: #fff;
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 16px;
-            box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
-        }
-        .dark-theme .stats-card {
-            background-color: #1c1c1e;
-            box-shadow: 0 1px 5px rgba(255, 255, 255, 0.05);
-        }
-        .stats-title {
-            font-size: 17px;
-            font-weight: 600;
-            margin-bottom: 16px;
-        }
-        .stats-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 12px;
-        }
-        .stats-label {
-            font-size: 15px;
-            color: #8E8E93;
-        }
-        .stats-value {
-            font-size: 15px;
-            font-weight: 500;
-        }
-        /* Переключение темы */
+        /* --- Стили для светлой и темной темы, улучшенное оформление экранов --- */
+        * {margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-tap-highlight-color:transparent;}
+        body {background:#f2f2f7;color:#000;min-height:100vh;min-width:100vw;display:flex;flex-direction:column;overflow:hidden;}
+        body.dark-theme {background:#000;color:#fff;}
+        .header {background:rgba(255,255,255,0.7);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(60,60,67,0.15);position:sticky;top:0;z-index:10;}
+        .dark-theme .header {background:rgba(30,30,30,0.7);border-bottom:1px solid rgba(255,255,255,0.15);}
+        .header h1 {font-size:17px;font-weight:600;text-align:center;flex:1;}
+        .header-button {color:#007AFF;font-size:17px;font-weight:400;background:none;border:none;padding:0 8px;cursor:pointer;}
+        .dark-theme .header-button {color:#0A84FF;}
+        .container {flex:1;display:flex;flex-direction:column;padding:16px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+        .word-card {background:#fff;border-radius:10px;padding:20px;margin-bottom:16px;box-shadow:0 1px 5px rgba(0,0,0,0.1);display:flex;flex-direction:column;align-items:center;animation:slide-up 0.3s;}
+        .dark-theme .word-card {background:#1c1c1e;box-shadow:0 1px 5px rgba(255,255,255,0.05);}
+        .word {font-size:32px;font-weight:700;margin-bottom:8px;color:#000;}
+        .dark-theme .word {color:#fff;}
+        .progress-info {font-size:15px;color:#8E8E93;margin-bottom:16px;}
+        .progress-bar-container {width:100%;height:8px;background:#E5E5EA;border-radius:4px;overflow:hidden;margin-bottom:24px;}
+        .dark-theme .progress-bar-container {background:#3A3A3C;}
+        .progress-bar {height:100%;background:#34C759;border-radius:4px;transition:width 0.3s;}
+        .timer-container {width:100%;display:flex;justify-content:center;align-items:center;margin-bottom:20px;}
+        .timer {font-size:24px;font-weight:500;color:#FF9500;}
+        .dark-theme .timer {color:#FF9F0A;}
+        .option-buttons {width:100%;display:flex;flex-direction:column;gap:12px;}
+        .option-button {width:100%;padding:16px;background:#F2F2F7;border:1px solid #C7C7CC;border-radius:10px;font-size:17px;font-weight:500;color:#000;text-align:center;cursor:pointer;transition:all 0.2s;}
+        .dark-theme .option-button {background:#2C2C2E;border:1px solid #38383A;color:#fff;}
+        .option-button:active {background:#E5E5EA;transform:scale(0.98);}
+        .dark-theme .option-button:active {background:#3A3A3C;}
+        .buttons-row {display:flex;justify-content:space-between;margin-top:16px;gap:12px;}
+        .action-button {flex:1;padding:14px 20px;border:none;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;text-align:center;}
+        .primary-button {background:#007AFF;color:#fff;}
+        .dark-theme .primary-button {background:#0A84FF;}
+        .secondary-button {background:#F2F2F7;color:#007AFF;border:1px solid #C7C7CC;}
+        .dark-theme .secondary-button {background:#2C2C2E;color:#0A84FF;border:1px solid #38383A;}
+        .correct {background:#34C759!important;color:#fff!important;border-color:#34C759!important;}
+        .dark-theme .correct {background:#30D158!important;border-color:#30D158!important;}
+        .incorrect {background:#FF3B30!important;color:#fff!important;border-color:#FF3B30!important;}
+        .dark-theme .incorrect {background:#FF453A!important;border-color:#FF453A!important;}
+        .tab-bar {display:flex;background:rgba(255,255,255,0.7);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid rgba(60,60,67,0.15);padding:8px 0;}
+        .dark-theme .tab-bar {background:rgba(30,30,30,0.7);border-top:1px solid rgba(255,255,255,0.15);}
+        .tab {flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 0;cursor:pointer;}
+        .tab-icon {font-size:24px;margin-bottom:4px;color:#8E8E93;}
+        .tab-label {font-size:10px;color:#8E8E93;}
+        .tab.active .tab-icon, .tab.active .tab-label {color:#007AFF;}
+        .dark-theme .tab.active .tab-icon, .dark-theme .tab.active .tab-label {color:#0A84FF;}
+        .modal {position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;visibility:hidden;transition:opacity 0.3s,visibility 0.3s;}
+        .modal.show {opacity:1;visibility:visible;}
+        .modal-content {background:#fff;border-radius:14px;width:85%;max-width:340px;padding:20px;box-shadow:0 4px 16px rgba(0,0,0,0.2);}
+        .dark-theme .modal-content {background:#2C2C2E;box-shadow:0 4px 16px rgba(0,0,0,0.5);}
+        .modal-title {font-size:17px;font-weight:600;margin-bottom:16px;text-align:center;}
+        .modal-buttons {display:flex;justify-content:space-between;margin-top:20px;}
+        @keyframes slide-up {0%{transform:translateY(20px);opacity:0;}100%{transform:translateY(0);opacity:1;}}
+        .screen {display:none;height:100%;flex-direction:column;flex:1;}
+        .screen.active {display:flex;}
+        .word-list {display:flex;flex-direction:column;gap:12px;}
+        .word-list-item {background:#fff;border-radius:10px;padding:16px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 1px 5px rgba(0,0,0,0.1);}
+        .dark-theme .word-list-item {background:#1c1c1e;box-shadow:0 1px 5px rgba(255,255,255,0.05);}
+        .word-list-text {display:flex;flex-direction:column;}
+        .word-list-item-title {font-size:17px;font-weight:500;margin-bottom:4px;}
+        .word-list-item-subtitle {font-size:14px;color:#8E8E93;}
+        .checkmark {color:#34C759;font-size:20px;}
+        .stats-card {background:#fff;border-radius:10px;padding:20px;margin-bottom:16px;box-shadow:0 1px 5px rgba(0,0,0,0.1);}
+        .dark-theme .stats-card {background:#1c1c1e;box-shadow:0 1px 5px rgba(255,255,255,0.05);}
+        .stats-title {font-size:17px;font-weight:600;margin-bottom:16px;}
+        .stats-row {display:flex;justify-content:space-between;margin-bottom:12px;}
+        .stats-label {font-size:15px;color:#8E8E93;}
+        .stats-value {font-size:15px;font-weight:500;}
         @media (prefers-color-scheme: dark) {
-            body {
-                background-color: #000;
-                color: #fff;
-            }
-            .header {
-                background-color: rgba(30, 30, 30, 0.7);
-                border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-            }
-            .header-button {
-                color: #0A84FF;
-            }
-            .word-card {
-                background-color: #1c1c1e;
-                box-shadow: 0 1px 5px rgba(255, 255, 255, 0.05);
-            }
-            .word {
-                color: #fff;
-            }
-            .progress-bar-container {
-                background-color: #3A3A3C;
-            }
-            .timer {
-                color: #FF9F0A;
-            }
-            .option-button {
-                background-color: #2C2C2E;
-                border: 1px solid #38383A;
-                color: #fff;
-            }
-            .option-button:active {
-                background-color: #3A3A3C;
-            }
-            .primary-button {
-                background-color: #0A84FF;
-            }
-            .secondary-button {
-                background-color: #2C2C2E;
-                color: #0A84FF;
-                border: 1px solid #38383A;
-            }
-            .correct {
-                background-color: #30D158 !important;
-                border-color: #30D158 !important;
-            }
-            .incorrect {
-                background-color: #FF453A !important;
-                border-color: #FF453A !important;
-            }
-            .tab-bar {
-                background-color: rgba(30, 30, 30, 0.7);
-                border-top: 1px solid rgba(255, 255, 255, 0.15);
-            }
-            .tab.active .tab-icon,
-            .tab.active .tab-label {
-                color: #0A84FF;
-            }
-            .modal-content {
-                background-color: #2C2C2E;
-                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-            }
-            .word-list-item {
-                background-color: #1c1c1e;
-                box-shadow: 0 1px 5px rgba(255, 255, 255, 0.05);
-            }
-            .stats-card {
-                background-color: #1c1c1e;
-                box-shadow: 0 1px 5px rgba(255, 255, 255, 0.05);
-            }
+            body {background:#000;color:#fff;}
+            .header {background:rgba(30,30,30,0.7);border-bottom:1px solid rgba(255,255,255,0.15);}
+            .header-button {color:#0A84FF;}
+            .word-card {background:#1c1c1e;box-shadow:0 1px 5px rgba(255,255,255,0.05);}
+            .word {color:#fff;}
+            .progress-bar-container {background:#3A3A3C;}
+            .timer {color:#FF9F0A;}
+            .option-button {background:#2C2C2E;border:1px solid #38383A;color:#fff;}
+            .option-button:active {background:#3A3A3C;}
+            .primary-button {background:#0A84FF;}
+            .secondary-button {background:#2C2C2E;color:#0A84FF;border:1px solid #38383A;}
+            .correct {background:#30D158!important;border-color:#30D158!important;}
+            .incorrect {background:#FF453A!important;border-color:#FF453A!important;}
+            .tab-bar {background:rgba(30,30,30,0.7);border-top:1px solid rgba(255,255,255,0.15);}
+            .tab.active .tab-icon,.tab.active .tab-label{color:#0A84FF;}
+            .modal-content {background:#2C2C2E;box-shadow:0 4px 16px rgba(0,0,0,0.5);}
+            .word-list-item {background:#1c1c1e;box-shadow:0 1px 5px rgba(255,255,255,0.05);}
+            .stats-card {background:#1c1c1e;box-shadow:0 1px 5px rgba(255,255,255,0.05);}
         }
     </style>
 </head>
@@ -694,254 +332,268 @@
     </div>
     
     <script>
-        // Инициализация Telegram WebApp
-        let tg = window.Telegram.WebApp;
-        tg.expand();
+    // --- Telegram WebApp и тема ---
+    let tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : {colorScheme:'light',expand:()=>{}};
+    tg.expand && tg.expand();
+    if (tg.colorScheme === 'dark') document.body.classList.add('dark-theme');
 
-        // Определение темы (светлая/темная)
-        if (tg.colorScheme === 'dark') {
-            document.body.classList.add('dark-theme');
+    // --- Данные ---
+    const savedWords = localStorage.getItem('dzhus_progress');
+    const words = savedWords ? JSON.parse(savedWords) : [
+        {word:"der Tisch",translation:"стол",progress:125,options:["стол","стул","диван","полка"]},
+        {word:"das Fenster",translation:"окно",progress:50,options:["окно","дверь","стена","пол"]},
+        {word:"die Lampe",translation:"лампа",progress:220,options:["лампа","свет","люстра","торшер"]},
+        {word:"der Stuhl",translation:"стул",progress:320,options:["стул","табурет","кресло","диван"]},
+        {word:"die Tür",translation:"дверь",progress:180,options:["дверь","окно","ворота","калитка"]}
+    ];
+    const knownWords = [
+        {word:"der Hund",progress:500},
+        {word:"die Katze",progress:500}
+    ];
+    const errorWords = [
+        {word:"das Fenster",progress:150},
+        {word:"die Lampe",progress:220}
+    ];
+
+    let currentWordIndex = 0;
+    let timerInterval;
+    let timeLeft = 10;
+
+    function showCurrentWord() {
+        const filteredWords = words.filter(w => w.progress <= 500);
+        if (filteredWords.length === 0) {
+            document.getElementById('current-word').textContent = 'Все слова выучены!';
+            document.getElementById('word-progress').textContent = '500';
+            document.getElementById('progress-bar').style.width = '100%';
+            document.getElementById('options-container').innerHTML = '';
+            return;
         }
+        currentWordIndex = currentWordIndex % filteredWords.length;
+        const currentWordText = filteredWords[currentWordIndex].word;
+        const currentWord = words.find(w => w.word === currentWordText);
+        document.getElementById('current-word').textContent = currentWord.word;
+        document.getElementById('word-progress').textContent = currentWord.progress;
+        document.getElementById('progress-bar').style.width = (currentWord.progress/500*100)+'%';
+        const optionsContainer = document.getElementById('options-container');
+        optionsContainer.innerHTML = '';
+        const shuffledOptions = [...currentWord.options].sort(()=>0.5-Math.random());
+        shuffledOptions.forEach(option=>{
+            const btn = document.createElement('button');
+            btn.className = 'option-button';
+            btn.textContent = option;
+            btn.dataset.correct = (option === currentWord.translation);
+            btn.addEventListener('click', handleOptionClick);
+            optionsContainer.appendChild(btn);
+        });
+        resetTimer();
+    }
 
-        // Данные о словах (в реальном приложении это будет загружаться с сервера)
-        const words = [
-            {
-                word: "der Tisch",
-                translation: "стол",
-                progress: 125,
-                options: ["стол", "стул", "диван", "полка"]
-            },
-            {
-                word: "das Fenster",
-                translation: "окно",
-                progress: 50,
-                options: ["окно", "дверь", "стена", "пол"]
-            },
-            {
-                word: "die Lampe",
-                translation: "лампа",
-                progress: 220,
-                options: ["лампа", "свет", "люстра", "торшер"]
-            },
-            {
-                word: "der Stuhl",
-                translation: "стул",
-                progress: 320,
-                options: ["стул", "табурет", "кресло", "диван"]
-            },
-            {
-                word: "die Tür",
-                translation: "дверь",
-                progress: 180,
-                options: ["дверь", "окно", "ворота", "калитка"]
+    function handleOptionClick(e) {
+        clearInterval(timerInterval);
+        const selected = e.target;
+        const isCorrect = selected.dataset.correct === 'true';
+        if (isCorrect) {
+            selected.classList.add('correct');
+            const earnedPoints = Math.floor(timeLeft * 10);
+            words[currentWordIndex].progress += earnedPoints;
+            document.getElementById('word-progress').textContent = words[currentWordIndex].progress;
+            document.getElementById('progress-bar').style.width = (words[currentWordIndex].progress / 500 * 100) + '%';
+            // Сохраняем прогресс в localStorage
+            localStorage.setItem('dzhus_progress', JSON.stringify(words));
+            // --- Добавлено: проверка, все ли слова выучены ---
+            const remainingWords = words.filter(w => w.progress < 500);
+            if (remainingWords.length === 0) {
+                document.getElementById('result-title').textContent = 'Поздравляем!';
+                document.getElementById('result-message').textContent = 'Вы выучили все слова!';
+                document.getElementById('result-modal').classList.add('show');
+                return;
             }
-        ];
-
-        // Выученные слова
-        const knownWords = [
-            {
-                word: "der Hund",
-                progress: 500
-            },
-            {
-                word: "die Katze",
-                progress: 500
-            }
-        ];
-
-        // Слова с ошибками
-        const errorWords = [
-            {
-                word: "das Fenster",
-                progress: 150
-            },
-            {
-                word: "die Lampe",
-                progress: 220
-            }
-        ];
-
-        // Переменные для учета времени и текущего слова
-        let currentWordIndex = 0;
-        let timerInterval;
-        let timeLeft = 10;
-
-        // Функция для отображения текущего слова
-        function showCurrentWord() {
-            const currentWord = words[currentWordIndex];
-            document.getElementById('current-word').textContent = currentWord.word;
-            document.getElementById('word-progress').textContent = currentWord.progress;
-            document.getElementById('progress-bar').style.width = (currentWord.progress / 500 * 100) + '%';
-            // Очищаем и заполняем контейнер с опциями
-            const optionsContainer = document.getElementById('options-container');
-            optionsContainer.innerHTML = '';
-            // Перемешиваем варианты ответов
-            const shuffledOptions = [...currentWord.options].sort(() => 0.5 - Math.random());
-            shuffledOptions.forEach(option => {
-                const button = document.createElement('button');
-                button.className = 'option-button';
-                button.textContent = option;
-                button.dataset.correct = (option === currentWord.translation).toString();
-                button.addEventListener('click', handleOptionClick);
-                optionsContainer.appendChild(button);
+            // -------------------------------------------------
+            document.getElementById('result-title').textContent = 'Правильно!';
+            document.getElementById('result-message').textContent = `Вы получили ${earnedPoints} баллов. Общий прогресс: ${words[currentWordIndex].progress}/500`;
+        } else {
+            selected.classList.add('incorrect');
+            document.querySelectorAll('.option-button').forEach(btn=>{
+                if (btn.dataset.correct === 'true') btn.classList.add('correct');
             });
-            // Сбрасываем и запускаем таймер
-            resetTimer();
-        }
-
-        // Функция для обработки нажатия на вариант ответа
-        function handleOptionClick(event) {
-            clearInterval(timerInterval);
-            const selectedOption = event.target;
-            const isCorrect = selectedOption.dataset.correct === 'true';
-            // Подсвечиваем выбранный вариант
-            if (isCorrect) {
-                selectedOption.classList.add('correct');
-                // Рассчитываем баллы на основе оставшегося времени
-                const earnedPoints = Math.floor(timeLeft * 10);
-                words[currentWordIndex].progress += earnedPoints;
-                if (words[currentWordIndex].progress > 500) {
-                    words[currentWordIndex].progress = 500;
-                }
-                // Показываем модальное окно с результатом
-                document.getElementById('result-title').textContent = 'Правильно!';
-                document.getElementById('result-message').textContent = `Вы получили ${earnedPoints} баллов. Общий прогресс: ${words[currentWordIndex].progress}/500`;
-            } else {
-                selectedOption.classList.add('incorrect');
-                // Подсвечиваем правильный вариант
-                const options = document.querySelectorAll('.option-button');
-                options.forEach(option => {
-                    if (option.dataset.correct === 'true') {
-                        option.classList.add('correct');
-                    }
-                });
-                // Добавляем слово в список ошибок, если его там нет
-                if (!errorWords.some(word => word.word === words[currentWordIndex].word)) {
-                    errorWords.push({
-                        word: words[currentWordIndex].word,
-                        progress: words[currentWordIndex].progress
-                    });
-                }
-                // Показываем модальное окно с результатом
-                document.getElementById('result-title').textContent = 'Неправильно';
-                document.getElementById('result-message').textContent = `Правильный ответ: ${words[currentWordIndex].translation}`;
+            // Добавить в ошибки если нет
+            if (!errorWords.some(w=>w.word===words[currentWordIndex].word)) {
+                errorWords.push({word:words[currentWordIndex].word,progress:words[currentWordIndex].progress});
             }
-            // Отключаем кнопки
-            const options = document.querySelectorAll('.option-button');
-            options.forEach(option => {
-                option.removeEventListener('click', handleOptionClick);
-                option.style.pointerEvents = 'none';
-            });
-            // Показываем модальное окно
-            document.getElementById('result-modal').classList.add('show');
+            document.getElementById('result-title').textContent = 'Неправильно';
+            document.getElementById('result-message').textContent = `Правильный ответ: ${words[currentWordIndex].translation}`;
         }
+        document.querySelectorAll('.option-button').forEach(btn=>{
+            btn.removeEventListener('click', handleOptionClick);
+            btn.style.pointerEvents = 'none';
+        });
 
-        // Функция для сброса и запуска таймера
-        function resetTimer() {
-            clearInterval(timerInterval);
-            timeLeft = 10;
+        // Убираем модальное окно
+        setTimeout(goToNextWord, 1000);  // Переход к следующему слову через 1 секунду
+    }
+
+    function resetTimer() {
+        clearInterval(timerInterval);timeLeft=10;
+        document.getElementById('timer').textContent = timeLeft;
+        timerInterval = setInterval(()=>{
+            timeLeft--;
             document.getElementById('timer').textContent = timeLeft;
-            timerInterval = setInterval(() => {
-                timeLeft -= 1;
-                document.getElementById('timer').textContent = timeLeft;
-                if (timeLeft <= 0) {
-                    clearInterval(timerInterval);
-                    // Автоматически переходим к следующему слову при истечении времени
-                    goToNextWord();
-                }
-            }, 1000);
-        }
-
-        // Функция для перехода к следующему слову
-        function goToNextWord() {
-            currentWordIndex = (currentWordIndex + 1) % words.length;
-            showCurrentWord();
-        }
-
-        // Функция для отображения списка выученных слов
-        function showKnownWords() {
-            const knownWordsList = document.getElementById('known-words-list');
-            knownWordsList.innerHTML = '';
-            if (knownWords.length === 0) {
-                const emptyMessage = document.createElement('div');
-                emptyMessage.textContent = 'У вас пока нет выученных слов.';
-                emptyMessage.style.textAlign = 'center';
-                emptyMessage.style.padding = '20px';
-                emptyMessage.style.color = '#8E8E93';
-                knownWordsList.appendChild(emptyMessage);
-                return;
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                goToNextWord();
             }
-            knownWords.forEach(word => {
-                const item = document.createElement('div');
-                item.className = 'word-list-item';
-                const textContainer = document.createElement('div');
-                textContainer.className = 'word-list-text';
-                const title = document.createElement('div');
-                title.className = 'word-list-item-title';
-                title.textContent = word.word;
-                const subtitle = document.createElement('div');
-                subtitle.className = 'word-list-item-subtitle';
-                subtitle.textContent = `Прогресс: ${word.progress}/500 баллов`;
-                textContainer.appendChild(title);
-                textContainer.appendChild(subtitle);
-                const checkmark = document.createElement('div');
-                checkmark.className = 'checkmark';
-                checkmark.textContent = '✓';
-                item.appendChild(textContainer);
-                item.appendChild(checkmark);
-                knownWordsList.appendChild(item);
-            });
-        }
+        },1000);
+    }
 
-        // Функция для отображения списка слов с ошибками
-        function showErrorWords() {
-            const errorWordsList = document.getElementById('error-words-list');
-            errorWordsList.innerHTML = '';
-            if (errorWords.length === 0) {
-                const emptyMessage = document.createElement('div');
-                emptyMessage.textContent = 'У вас нет слов с ошибками.';
-                emptyMessage.style.textAlign = 'center';
-                emptyMessage.style.padding = '20px';
-                emptyMessage.style.color = '#8E8E93';
-                errorWordsList.appendChild(emptyMessage);
-                return;
-            }
-            errorWords.forEach(word => {
-                const item = document.createElement('div');
-                item.className = 'word-list-item';
-                const textContainer = document.createElement('div');
-                textContainer.className = 'word-list-text';
-                const title = document.createElement('div');
-                title.className = 'word-list-item-title';
-                title.textContent = word.word;
-                const subtitle = document.createElement('div');
-                subtitle.className = 'word-list-item-subtitle';
-                subtitle.textContent = `Прогресс: ${word.progress}/500 баллов`;
-                textContainer.appendChild(title);
-                textContainer.appendChild(subtitle);
-                const repeatButton = document.createElement('button');
-                repeatButton.className = 'action-button primary-button';
-                repeatButton.textContent = 'Повторить';
-                repeatButton.style.padding = '8px 12px';
-                repeatButton.style.fontSize = '14px';
-                item.appendChild(textContainer);
-                item.appendChild(repeatButton);
-                errorWordsList.appendChild(item);
-            });
-        }
+    function goToNextWord() {
+        const availableWords = words.filter(w => w.progress <= 500);
+        if (availableWords.length === 0) return;
+        currentWordIndex = (currentWordIndex + 1) % availableWords.length;
+        showCurrentWord();
+        document.getElementById('result-modal').classList.remove('show');
+    }
 
-        // Функция для обновления статистики
-        function updateStatistics() {
-            document.getElementById('total-known-words').textContent = knownWords.length;
-            document.getElementById('in-progress-words').textContent = words.length;
-            document.getElementById('error-words-count').textContent = errorWords.length;
-            // Подсчитываем общее количество баллов
-            const totalScore =
-                knownWords.reduce((total, word) => total + word.progress, 0) +
-                words.reduce((total, word) => total + word.progress, 0);
-            document.getElementById('total-score').textContent = totalScore;
-            // Отображаем топ-слова
-            const topWordsList = document.getElementById('top-words-list');
-            topWordsList.innerHTML = '';
-            // Объединяем все слова и сортируем по прогрессу
-            const allWords = [...knownWords
+    function showKnownWords() {
+        const list = document.getElementById('known-words-list');
+        list.innerHTML = '';
+        if (knownWords.length===0) {
+            const empty = document.createElement('div');
+            empty.textContent = 'У вас пока нет выученных слов.';
+            empty.style.textAlign = 'center';
+            empty.style.padding = '20px';
+            empty.style.color = '#8E8E93';
+            list.appendChild(empty); return;
+        }
+        knownWords.forEach(word=>{
+            const item = document.createElement('div');
+            item.className = 'word-list-item';
+            const text = document.createElement('div');
+            text.className = 'word-list-text';
+            const title = document.createElement('div');
+            title.className = 'word-list-item-title';
+            title.textContent = word.word;
+            const subtitle = document.createElement('div');
+            subtitle.className = 'word-list-item-subtitle';
+            subtitle.textContent = `Прогресс: ${word.progress}/500 баллов`;
+            text.appendChild(title);text.appendChild(subtitle);
+            const check = document.createElement('div');
+            check.className = 'checkmark'; check.textContent = '✓';
+            item.appendChild(text);item.appendChild(check);
+            list.appendChild(item);
+        });
+    }
+
+    function showErrorWords() {
+        const list = document.getElementById('error-words-list');
+        list.innerHTML = '';
+        if (errorWords.length===0) {
+            const empty = document.createElement('div');
+            empty.textContent = 'У вас нет слов с ошибками.';
+            empty.style.textAlign = 'center';
+            empty.style.padding = '20px';
+            empty.style.color = '#8E8E93';
+            list.appendChild(empty); return;
+        }
+        errorWords.forEach(word=>{
+            const item = document.createElement('div');
+            item.className = 'word-list-item';
+            const text = document.createElement('div');
+            text.className = 'word-list-text';
+            const title = document.createElement('div');
+            title.className = 'word-list-item-title';
+            title.textContent = word.word;
+            const subtitle = document.createElement('div');
+            subtitle.className = 'word-list-item-subtitle';
+            subtitle.textContent = `Прогресс: ${word.progress}/500 баллов`;
+            text.appendChild(title);text.appendChild(subtitle);
+            const repeatBtn = document.createElement('button');
+            repeatBtn.className = 'action-button primary-button';
+            repeatBtn.textContent = 'Повторить';
+            repeatBtn.style.padding = '8px 12px'; repeatBtn.style.fontSize = '14px';
+            repeatBtn.addEventListener('click',()=>alert(`Повтор слова "${word.word}"!`));
+            item.appendChild(text);item.appendChild(repeatBtn);
+            list.appendChild(item);
+        });
+    }
+
+    function updateStatistics() {
+        document.getElementById('total-known-words').textContent = knownWords.length;
+        document.getElementById('in-progress-words').textContent = words.length;
+        document.getElementById('error-words-count').textContent = errorWords.length;
+        const totalScore = knownWords.reduce((t,w)=>t+w.progress,0) + words.reduce((t,w)=>t+w.progress,0);
+        document.getElementById('total-score').textContent = totalScore;
+        const topWordsList = document.getElementById('top-words-list');
+        topWordsList.innerHTML = '';
+        const allWords = [...knownWords,...words].sort((a,b)=>b.progress-a.progress).slice(0,5);
+        allWords.forEach(word=>{
+            const item = document.createElement('div');
+            item.className = 'word-list-item';
+            const text = document.createElement('div');
+            text.className = 'word-list-text';
+            const title = document.createElement('div');
+            title.className = 'word-list-item-title';
+            title.textContent = word.word;
+            const subtitle = document.createElement('div');
+            subtitle.className = 'word-list-item-subtitle';
+            subtitle.textContent = `${word.progress} баллов`;
+            text.appendChild(title);text.appendChild(subtitle);
+            item.appendChild(text);
+            topWordsList.appendChild(item);
+        });
+    }
+
+    // --- Переключение экранов ---
+    function switchScreen(screenId) {
+        document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+        document.getElementById(screenId).classList.add('active');
+        // Переключить табы
+        document.querySelectorAll('.tab-bar').forEach(bar=>{
+            bar.querySelectorAll('.tab').forEach(tab=>{
+                if (tab.dataset.screen === screenId) tab.classList.add('active');
+                else tab.classList.remove('active');
+            });
+        });
+        // Инициализация содержимого для разных экранов
+        if (screenId==='known-screen') showKnownWords();
+        if (screenId==='errors-screen') showErrorWords();
+        if (screenId==='stats-screen') updateStatistics();
+        if (screenId==='learn-screen') showCurrentWord();
+    }
+
+    // --- Обработчики событий ---
+    document.addEventListener('DOMContentLoaded',function(){
+        // Табы
+        document.querySelectorAll('.tab').forEach(tab=>{
+            tab.addEventListener('click',function(){
+                switchScreen(tab.dataset.screen);
+            });
+        });
+        // Кнопки Назад
+        document.getElementById('back-button-known').onclick = ()=>switchScreen('learn-screen');
+        document.getElementById('back-button-errors').onclick = ()=>switchScreen('learn-screen');
+        document.getElementById('back-button-stats').onclick = ()=>switchScreen('learn-screen');
+        // Меню и статистика в learn-screen
+        document.getElementById('menu-button').onclick = ()=>alert('Меню пока не реализовано');
+        document.getElementById('stats-button').onclick = ()=>switchScreen('stats-screen');
+        // Кнопка "Я знаю это слово"
+        document.getElementById('known-button').onclick = function(){
+            // Добавить текущее слово в knownWords если не там
+            const w = words[currentWordIndex];
+            if (!knownWords.some(kw=>kw.word===w.word)) knownWords.push({word:w.word,progress:w.progress});
+            localStorage.setItem('dzhus_progress', JSON.stringify(words));
+            goToNextWord();
+        };
+        // Кнопка "Продолжить" в модалке
+        document.getElementById('continue-button').onclick = function(){
+            document.getElementById('result-modal').classList.remove('show');
+            goToNextWord();
+        };
+        // Кнопка "Повторить все слова с ошибками"
+        const repeatAllBtn = document.getElementById('repeat-all-button');
+        if (repeatAllBtn) repeatAllBtn.onclick = function(){
+            alert('Повторение всех слов с ошибками!');
+        };
+        // Первоначальный запуск
+        showCurrentWord();
+    });
+    </script>
