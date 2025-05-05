@@ -351,6 +351,61 @@
     let timerInterval;
     let timeLeft = 10;
 
+    // --- Google Sheets sync: параметры ---
+    const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec'; // Замените на ваш URL Google Apps Script
+
+    // Получить userId из Telegram WebApp или сгенерировать временный
+    let userId = null;
+    if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
+        userId = tg.initDataUnsafe.user.id.toString();
+    } else {
+        userId = localStorage.getItem('dzhus_userid') || ('user_' + Math.random().toString(36).substr(2, 9));
+        localStorage.setItem('dzhus_userid', userId);
+    }
+
+    // --- Функция сохранения прогресса в Google Таблицу ---
+    function saveProgressToGoogleSheet(userId, word, progress) {
+        const url = GOOGLE_SCRIPT_URL;
+        const params = {
+            method: 'GET',
+            params: {
+                userId: userId,
+                word: word,
+                progress: progress
+            }
+        };
+        fetch(url + `?userId=${encodeURIComponent(userId)}&word=${encodeURIComponent(word)}&progress=${encodeURIComponent(progress)}`, {
+            method: 'GET'
+        })
+            .then(response => response.text())
+            .then(data => {
+                console.log('Progress saved:', data);
+            })
+            .catch(error => console.error('Error saving progress:', error));
+    }
+
+    // --- Функция загрузки прогресса из Google Таблицы ---
+    function loadProgressFromGoogleSheet(userId) {
+        const url = GOOGLE_SCRIPT_URL;
+        // Передаем только userId
+        return fetch(url + `?userId=${encodeURIComponent(userId)}`, {
+            method: 'GET'
+        })
+            .then(response => response.json())
+            .then(data => {
+                console.log('User progress:', data);
+                // data: [{word:..., progress:...}, ...]
+                if (Array.isArray(data)) {
+                    // Применить прогресс к words
+                    data.forEach(saved => {
+                        let w = words.find(word => word.word === saved.word);
+                        if (w) w.progress = Number(saved.progress) || 0;
+                    });
+                }
+            })
+            .catch(error => console.error('Error loading progress:', error));
+    }
+
     // Загрузить данные из JSON файла на GitHub
     fetch('https://raw.githubusercontent.com/djys0912/dzhussolingvobot/main/words_data.json')
         .then(response => response.json())
@@ -365,8 +420,10 @@
                 ],
                 progress: 0
             }));
-            console.log(words);  // Проверьте в консоли, что данные загружены
-            showCurrentWord();  // Показать первое слово
+            // После загрузки слов загрузить прогресс из Google Sheets
+            loadProgressFromGoogleSheet(userId).finally(() => {
+                showCurrentWord();  // Показать первое слово после загрузки прогресса
+            });
         })
         .catch(error => console.error('Ошибка при загрузке слов:', error));
 
@@ -387,13 +444,12 @@
         document.getElementById('progress-bar').style.width = (currentWord.progress / 500 * 100) + '%';
         const optionsContainer = document.getElementById('options-container');
         optionsContainer.innerHTML = '';
-        // Добавить правильный ответ и перемешать опции
         const shuffledOptions = [...currentWord.options, currentWord.translation].sort(() => 0.5 - Math.random());
         shuffledOptions.forEach(option => {
             const btn = document.createElement('button');
             btn.className = 'option-button';
             btn.textContent = option;
-            btn.dataset.correct = (option === currentWord.translation); // Обеспечивает правильное выделение правильного ответа
+            btn.dataset.correct = (option === currentWord.translation);
             btn.addEventListener('click', handleOptionClick);
             optionsContainer.appendChild(btn);
         });
@@ -410,8 +466,8 @@
             words[currentWordIndex].progress += earnedPoints;
             document.getElementById('word-progress').textContent = words[currentWordIndex].progress;
             document.getElementById('progress-bar').style.width = (words[currentWordIndex].progress / 500 * 100) + '%';
-            // Сохраняем прогресс в localStorage
-            localStorage.setItem('dzhus_progress', JSON.stringify(words));
+            // Сохраняем прогресс в Google Таблицу
+            saveProgressToGoogleSheet(userId, words[currentWordIndex].word, words[currentWordIndex].progress);
             // --- Добавлено: проверка, все ли слова выучены ---
             const remainingWords = words.filter(w => w.progress < 500);
             if (remainingWords.length === 0) {
@@ -592,7 +648,8 @@
             // Добавить текущее слово в knownWords если не там
             const w = words[currentWordIndex];
             if (!knownWords.some(kw=>kw.word===w.word)) knownWords.push({word:w.word,progress:w.progress});
-            localStorage.setItem('dzhus_progress', JSON.stringify(words));
+            // Сохраняем прогресс в Google Таблицу
+            saveProgressToGoogleSheet(userId, w.word, w.progress);
             goToNextWord();
         };
         // Кнопка "Продолжить" в модалке
