@@ -384,15 +384,16 @@
         const currentWord = words.find(w => w.word === currentWordText);
         document.getElementById('current-word').textContent = currentWord.word;
         document.getElementById('word-progress').textContent = currentWord.progress;
-        document.getElementById('progress-bar').style.width = (currentWord.progress/500*100)+'%';
+        document.getElementById('progress-bar').style.width = (currentWord.progress / 500 * 100) + '%';
         const optionsContainer = document.getElementById('options-container');
         optionsContainer.innerHTML = '';
-        const shuffledOptions = [...currentWord.options].sort(()=>0.5-Math.random());
-        shuffledOptions.forEach(option=>{
+        // Добавить правильный ответ и перемешать опции
+        const shuffledOptions = [...currentWord.options, currentWord.translation].sort(() => 0.5 - Math.random());
+        shuffledOptions.forEach(option => {
             const btn = document.createElement('button');
             btn.className = 'option-button';
             btn.textContent = option;
-            btn.dataset.correct = (option === currentWord.translation);
+            btn.dataset.correct = (option === currentWord.translation); // Обеспечивает правильное выделение правильного ответа
             btn.addEventListener('click', handleOptionClick);
             optionsContainer.appendChild(btn);
         });
