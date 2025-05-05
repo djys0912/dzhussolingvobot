@@ -338,14 +338,8 @@
     if (tg.colorScheme === 'dark') document.body.classList.add('dark-theme');
 
     // --- Данные ---
-    const savedWords = localStorage.getItem('dzhus_progress');
-    const words = savedWords ? JSON.parse(savedWords) : [
-        {word:"der Tisch",translation:"стол",progress:125,options:["стол","стул","диван","полка"]},
-        {word:"das Fenster",translation:"окно",progress:50,options:["окно","дверь","стена","пол"]},
-        {word:"die Lampe",translation:"лампа",progress:220,options:["лампа","свет","люстра","торшер"]},
-        {word:"der Stuhl",translation:"стул",progress:320,options:["стул","табурет","кресло","диван"]},
-        {word:"die Tür",translation:"дверь",progress:180,options:["дверь","окно","ворота","калитка"]}
-    ];
+    let words = [];
+    let currentWordIndex = 0;
     const knownWords = [
         {word:"der Hund",progress:500},
         {word:"die Katze",progress:500}
@@ -354,10 +348,27 @@
         {word:"das Fenster",progress:150},
         {word:"die Lampe",progress:220}
     ];
-
-    let currentWordIndex = 0;
     let timerInterval;
     let timeLeft = 10;
+
+    // Загрузить данные из JSON файла на GitHub
+    fetch('https://raw.githubusercontent.com/djys0912/dzhussolingvobot/main/words_data.json')
+        .then(response => response.json())
+        .then(data => {
+            words = data.map(item => ({
+                word: item['Слово (DE)'],
+                translation: item['Правильный ответ'],
+                options: [
+                    item['Неверный 1'],
+                    item['Неверный 2'],
+                    item['Неверный 3']
+                ],
+                progress: 0
+            }));
+            console.log(words);  // Проверьте в консоли, что данные загружены
+            showCurrentWord();  // Показать первое слово
+        })
+        .catch(error => console.error('Ошибка при загрузке слов:', error));
 
     function showCurrentWord() {
         const filteredWords = words.filter(w => w.progress <= 500);
