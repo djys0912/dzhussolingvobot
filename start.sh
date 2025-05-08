@@ -1,2 +1,3 @@
 #!/bin/bash
-# python3 bot.py
+source venv/bin/activate  # Если вы используете виртуальное окружение
+python3 bot.py  # Команда для запуска бота

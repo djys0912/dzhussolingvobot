@@ -7,6 +7,8 @@ load_dotenv()
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import random
+# Импорт для работы с Supabase
+from supabase import create_client, Client
 
 # Включаем логирование
 logging.basicConfig(
@@ -15,8 +17,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# URL вашего веб-приложения (замените на свой после загрузки на хостинг)
 WEBAPP_URL = "https://djys0912.github.io/dzhussolingvobot/german_app.html"
+
+# Настройка подключения к Supabase
+url = "https://your-project-url.supabase.co"  # Замените на ваш URL Supabase
+key = "your-public-anon-key"  # Замените на ваш ключ API
+supabase_client: Client = create_client(url, key)
+
+# Функция для обновления прогресса пользователя в Supabase
+def update_progress(user_id, word, progress):
+    try:
+        table = supabase_client.table('progress')
+        response = table.upsert([{
+            "user_id": user_id,
+            "word": word,
+            "progress": progress
+        }]).execute()
+        if getattr(response, "status_code", None) == 200 or getattr(response, "status", None) == 200:
+            logger.info(f"Прогресс для пользователя {user_id} успешно обновлен.")
+        else:
+            logger.error(f"Ошибка при обновлении прогресса для пользователя {user_id}: {getattr(response, 'data', response)}")
+    except Exception as e:
+        logger.error(f"Ошибка при работе с Supabase: {e}")
 
 # Функция для загрузки данных из Google Таблицы или локального файла
 def load_data():
@@ -254,6 +276,8 @@ async def start_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Прогресс: {word_score}/500 баллов",
             reply_markup=reply_markup
         )
+        # Синхронизируем прогресс с Supabase после отправки слова
+        update_progress(user_id, question, user_data["word_scores"].get(question, 0))
     else:
         # Все слова пройдены, предлагаем начать заново
         keyboard = [
@@ -303,6 +327,8 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     # Индекс не меняем, так как следующее слово "сдвинется" на текущую позицию
                 else:
                     user_data["current_word_index"] = 0
+            # Обновляем прогресс в Supabase
+            update_progress(user_id, current_question, user_data["word_scores"].get(current_question, 0))
         else:
             await update.message.reply_text(
                 f"Неправильный ответ. Правильный: {correct_answer} ❌"
@@ -314,6 +340,8 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # Переходим к следующему слову
             user_data["current_word_index"] = (user_data.get("current_word_index", 0) + 1) % len(user_data["current_words"])
+            # Также обновляем прогресс в Supabase для неправильного ответа
+            update_progress(user_id, current_question, user_data["word_scores"].get(current_question, 0))
         
         # Очищаем данные после проверки
         del context.user_data['correct_answer']

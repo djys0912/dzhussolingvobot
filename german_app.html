@@ -6,6 +6,8 @@
     <title>Изучение немецкого языка</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Supabase JS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/dist/umd/supabase.min.js"></script>
     <style>
         /* --- Стили для светлой и темной темы, улучшенное оформление экранов --- */
         * {margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-tap-highlight-color:transparent;}
@@ -351,6 +353,11 @@
     let timerInterval;
     let timeLeft = 10;
 
+    // --- Supabase параметры ---
+    const SUPABASE_URL = "https://oyppivnywdzbdqmugwfp.supabase.co";  // Замените на ваш URL Supabase
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im95cHBpdm55d2R6YmRxbXVnd2ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY3MjE3NzUsImV4cCI6MjA2MjI5Nzc3NX0.GspH-GCes-8d001Ox8oRao2_5jOHy1wEYlGrel5WHMI";  // Замените на ваш Supabase API Keyconst SUPABASE_URL = "https://oyppivnywdzbdqmugwfp.supabase.co";  // Замените на ваш URL Supabase
+
+
     // --- Google Sheets sync: параметры ---
     const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec'; // Замените на ваш URL Google Apps Script
 
@@ -363,53 +370,39 @@
         localStorage.setItem('dzhus_userid', userId);
     }
 
-    // --- Функция сохранения прогресса в Google Таблицу ---
-    function saveProgressToGoogleSheet(userId, word, progress) {
-        const url = GOOGLE_SCRIPT_URL;
-        const params = {
-            method: 'GET',
-            params: {
-                userId: userId,
+    // --- Функция сохранения прогресса в Supabase ---
+    async function saveProgress(userId, word, progress) {
+        const { data, error } = await supabase
+            .from('progress')
+            .upsert([{
+                user_id: userId,
                 word: word,
                 progress: progress
-            }
-        };
-        fetch(url + `?userId=${encodeURIComponent(userId)}&word=${encodeURIComponent(word)}&progress=${encodeURIComponent(progress)}`, {
-            method: 'GET'
-        })
-            .then(response => response.text())
-            .then(data => {
-                console.log('Progress saved:', data);
-            })
-            .catch(error => console.error('Error saving progress:', error));
+            }]);
+        if (error) {
+            console.error('Ошибка при сохранении прогресса:', error);
+        } else {
+            console.log('Прогресс сохранен:', data);
+        }
     }
 
-    // --- Функция загрузки прогресса из Google Таблицы ---
-    function loadProgressFromGoogleSheet(userId) {
-        const url = GOOGLE_SCRIPT_URL;
-        // Передаем только userId
-        return fetch(url + `?userId=${encodeURIComponent(userId)}`, {
-            method: 'GET'
-        })
-            .then(response => response.json())
-            .then(data => {
-                console.log('User progress:', data);
-                // data: [{word:..., progress:...}, ...]
-                if (Array.isArray(data)) {
-                    // Применить прогресс к words
-                    data.forEach(saved => {
-                        let w = words.find(word => word.word === saved.word);
-                        if (w) w.progress = Number(saved.progress) || 0;
-                    });
-                }
-            })
-            .catch(error => console.error('Error loading progress:', error));
+    // --- Функция загрузки прогресса из Supabase ---
+    async function loadProgress(userId) {
+        const { data, error } = await supabase
+            .from('progress')
+            .select('*')
+            .eq('user_id', userId);
+        if (error) {
+            console.error('Ошибка при загрузке прогресса:', error);
+            return [];
+        }
+        return data;
     }
 
     // Загрузить данные из JSON файла на GitHub
     fetch('https://raw.githubusercontent.com/djys0912/dzhussolingvobot/main/words_data.json')
         .then(response => response.json())
-        .then(data => {
+        .then(async data => {
             words = data.map(item => ({
                 word: item['Слово (DE)'],
                 translation: item['Правильный ответ'],
@@ -420,10 +413,16 @@
                 ],
                 progress: 0
             }));
-            // После загрузки слов загрузить прогресс из Google Sheets
-            loadProgressFromGoogleSheet(userId).finally(() => {
-                showCurrentWord();  // Показать первое слово после загрузки прогресса
-            });
+            // После загрузки слов загрузить прогресс из Supabase
+            const progressData = await loadProgress(userId);
+            if (Array.isArray(progressData)) {
+                progressData.forEach(saved => {
+                    let w = words.find(word => word.word === saved.word);
+                    if (w) w.progress = Number(saved.progress) || 0;
+                });
+                console.log('Загруженный прогресс:', progressData);
+            }
+            showCurrentWord();  // Показать первое слово после загрузки прогресса
         })
         .catch(error => console.error('Ошибка при загрузке слов:', error));
 
@@ -466,8 +465,8 @@
             words[currentWordIndex].progress += earnedPoints;
             document.getElementById('word-progress').textContent = words[currentWordIndex].progress;
             document.getElementById('progress-bar').style.width = (words[currentWordIndex].progress / 500 * 100) + '%';
-            // Сохраняем прогресс в Google Таблицу
-            saveProgressToGoogleSheet(userId, words[currentWordIndex].word, words[currentWordIndex].progress);
+            // Сохраняем прогресс в Supabase
+            saveProgress(userId, words[currentWordIndex].word, words[currentWordIndex].progress);
             // --- Добавлено: проверка, все ли слова выучены ---
             const remainingWords = words.filter(w => w.progress < 500);
             if (remainingWords.length === 0) {
@@ -648,8 +647,8 @@
             // Добавить текущее слово в knownWords если не там
             const w = words[currentWordIndex];
             if (!knownWords.some(kw=>kw.word===w.word)) knownWords.push({word:w.word,progress:w.progress});
-            // Сохраняем прогресс в Google Таблицу
-            saveProgressToGoogleSheet(userId, w.word, w.progress);
+            // Сохраняем прогресс в Supabase
+            saveProgress(userId, w.word, w.progress);
             goToNextWord();
         };
         // Кнопка "Продолжить" в модалке
