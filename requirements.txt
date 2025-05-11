@@ -1,5 +1,7 @@
-python-telegram-bot==20.6
-pandas
-python-dotenv
-requests
-supabase
+python-telegram-bot==20.7
+python-dotenv==1.0.0
+supabase==2.0.3
+pandas==2.0.3
+aiohttp==3.9.5
+httpx==0.25.0
+postgrest-py==0.10.8
