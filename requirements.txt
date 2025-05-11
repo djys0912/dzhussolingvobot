@@ -1,4 +1,5 @@
 python-telegram-bot==20.6
-pandas
-python-dotenv
-supabase-py
+pandas==2.2.3
+python-dotenv==1.1.0
+requests==2.28.2
+supabase==1.1.0
