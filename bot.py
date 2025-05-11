@@ -59,6 +59,8 @@ def init_supabase_tables():
 
 # Функция для синхронизации прогресса пользователя с Supabase
 async def sync_progress_to_supabase(user_id, word, progress, known=False, is_error=False):
+    if not str(user_id).startswith("user_"):
+        user_id = f"user_{user_id}"
     """Сохраняет или обновляет прогресс в Supabase"""
     global supabase_client
     if not supabase_client:
@@ -92,6 +94,8 @@ async def sync_progress_to_supabase(user_id, word, progress, known=False, is_err
 
 # Функция для загрузки прогресса пользователя из Supabase
 async def load_progress_from_supabase(user_id):
+    if not str(user_id).startswith("user_"):
+        user_id = f"user_{user_id}"
     """Загружает весь прогресс пользователя из Supabase"""
     global supabase_client
     if not supabase_client:
@@ -172,6 +176,8 @@ async def load_user_data(user_id):
 
 # Функция для синхронизации локальных данных с Supabase
 async def sync_local_to_supabase(user_id, user_data):
+    if not str(user_id).startswith("user_"):
+        user_id = f"user_{user_id}"
     """Синхронизирует локальные данные пользователя с Supabase"""
     try:
         for word, progress in user_data.get("word_scores", {}).items():
@@ -200,6 +206,8 @@ async def save_user_data(user_id, user_data):
 
 # Функция для обновления конкретного слова
 async def update_word_progress(user_id, word, points_earned, is_known=False, is_error=False):
+    if not str(user_id).startswith("user_"):
+        user_id = f"user_{user_id}"
     """Обновляет прогресс конкретного слова и синхронизирует с Supabase"""
     user_data = await load_user_data(user_id)
     

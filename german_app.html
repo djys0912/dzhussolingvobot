@@ -339,7 +339,7 @@
     // Получить userId из Telegram WebApp или сгенерировать временный
     let userId = null;
     if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
-        userId = tg.initDataUnsafe.user.id; // Без префикса 'user_'
+        userId = 'user_' + tg.initDataUnsafe.user.id; // Добавлен префикс для соответствия формату в Supabase и боте
     } else {
         userId = localStorage.getItem('dzhus_userid') || Math.random().toString(36).substr(2, 9);
         localStorage.setItem('dzhus_userid', userId);
