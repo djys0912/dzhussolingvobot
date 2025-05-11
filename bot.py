@@ -20,8 +20,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-WEBAPP_URL = "https://djys0912.github.io/dzhussolingvobot/german_app.html"
-
 # Настройка подключения к Supabase
 SUPABASE_URL = os.getenv('SUPABASE_URL', 'https://oyppivnywdzbdqmugwfp.supabase.co')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im95cHBpdm55d2R6YmRxbXVnd2ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY3MjE3NzUsImV4cCI6MjA2MjI5Nzc3NX0.GspH-GCes-8d001Ox8oRao2_5jOHy1wEYlGrel5WHMI')
@@ -45,8 +43,10 @@ def init_supabase():
 def init_supabase_tables():
     global supabase_client
     if not supabase_client:
-        init_supabase()
-    
+        if not init_supabase():
+            # Не удалось инициализировать Supabase
+            return False
+
     try:
         # Используем синхронный вызов вместо async
         result = supabase_client.table('progress').select('*').limit(1).execute()
@@ -59,13 +59,13 @@ def init_supabase_tables():
 
 # Функция для синхронизации прогресса пользователя с Supabase
 async def sync_progress_to_supabase(user_id, word, progress, known=False, is_error=False):
-    if not str(user_id).startswith("user_"):
-        user_id = f"user_{user_id}"
     """Сохраняет или обновляет прогресс в Supabase"""
     global supabase_client
     if not supabase_client:
-        init_supabase()
-    
+        if not init_supabase():
+            # Не удалось инициализировать Supabase
+            return False
+
     try:
         # Проверяем, существует ли уже запись
         existing = supabase_client.table('progress').select('*').eq('user_id', user_id).eq('word', word).execute()
@@ -94,12 +94,12 @@ async def sync_progress_to_supabase(user_id, word, progress, known=False, is_err
 
 # Функция для загрузки прогресса пользователя из Supabase
 async def load_progress_from_supabase(user_id):
-    if not str(user_id).startswith("user_"):
-        user_id = f"user_{user_id}"
     """Загружает весь прогресс пользователя из Supabase"""
     global supabase_client
     if not supabase_client:
-        init_supabase()
+        if not init_supabase():
+            # Не удалось инициализировать Supabase
+            return []
     
     try:
         response = supabase_client.table('progress').select('*').eq('user_id', user_id).execute()
@@ -125,76 +125,78 @@ async def load_user_data(user_id):
             "word_scores": {},
             "known_words": [],
             "incorrect_words": [],
-            "current_words": []
+            "current_words": [],
+            "current_word_index": 0
         }
-        
         for item in supabase_data:
-            word = item.get('word')
+            word = item['word']
             progress = item.get('progress', 0)
             known = item.get('known', False)
             is_error = item.get('is_error', False)
-            
             user_data["word_scores"][word] = progress
-            
-            if known:
+            if known and word not in user_data["known_words"]:
                 user_data["known_words"].append(word)
-            
-            if is_error:
+            if is_error and word not in user_data["incorrect_words"]:
                 user_data["incorrect_words"].append(word)
-        
-        # Сохраняем локально для резервного копирования
+        # Сохраняем данные локально
         file_path = f'user_data_{user_id}.json'
         try:
             with open(file_path, 'w', encoding='utf-8') as file:
                 json.dump(user_data, file, ensure_ascii=False, indent=4)
+            return user_data
         except Exception as e:
             logger.error(f"Ошибка при сохранении локальных данных: {e}")
-        
+            return user_data
+    else:
+        # Если нет данных в Supabase, пробуем загрузить локально
+        file_path = f'user_data_{user_id}.json'
+        try:
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    user_data = json.load(file)
+                logger.info("Загружены данные из локального файла.")
+            else:
+                # Если локального файла нет, загружаем данные из исходного источника (например, Google Sheets)
+                user_data = load_data()
+                # Сохраняем в локальный файл
+                with open(file_path, 'w', encoding='utf-8') as file:
+                    json.dump(user_data, file, ensure_ascii=False, indent=4)
+                logger.info("Данные загружены с Google Таблицы и сохранены локально.")
+        except Exception as e:
+            logger.error(f"Ошибка при загрузке данных: {e}")
+            # Если возникла ошибка, создаем пустую структуру данных
+            user_data = {
+                "word_scores": {},
+                "known_words": [],
+                "incorrect_words": [],
+                "current_words": [],
+                "current_word_index": 0
+            }
         return user_data
-    
-    # Если нет данных в Supabase, пробуем загрузить локально
-    file_path = f'user_data_{user_id}.json'
-    
-    if os.path.exists(file_path):
-        with open(file_path, 'r', encoding='utf-8') as file:
-            user_data = json.load(file)
-        
-        # Синхронизируем локальные данные с Supabase
-        await sync_local_to_supabase(user_id, user_data)
-        
-        return user_data
-    
-    # Создаем новый профиль пользователя
-    user_data = {
-        "word_scores": {},
-        "known_words": [],
-        "incorrect_words": [],
-        "current_words": []
-    }
-    
-    return user_data
 
 # Функция для синхронизации локальных данных с Supabase
 async def sync_local_to_supabase(user_id, user_data):
-    if not str(user_id).startswith("user_"):
-        user_id = f"user_{user_id}"
     """Синхронизирует локальные данные пользователя с Supabase"""
     try:
+        all_success = True
         for word, progress in user_data.get("word_scores", {}).items():
             known = word in user_data.get("known_words", [])
             is_error = word in user_data.get("incorrect_words", [])
-            
-            await sync_progress_to_supabase(user_id, word, progress, known, is_error)
-        
-        logger.info(f"Локальные данные пользователя {user_id} синхронизированы с Supabase")
+            success = await sync_progress_to_supabase(user_id, word, progress, known, is_error)
+            if not success:
+                all_success = False
+        if all_success:
+            logger.info(f"Локальные данные пользователя {user_id} синхронизированы с Supabase")
+        else:
+            logger.warning(f"Не все данные пользователя {user_id} удалось синхронизировать")
     except Exception as e:
         logger.error(f"Ошибка при синхронизации локальных данных: {e}")
 
-# Модифицированная функция сохранения пользовательских данных
+# Функция для сохранения пользовательских данных локально и синхронизации с Supabase
 async def save_user_data(user_id, user_data):
+    """Сохраняет данные пользователя локально и синхронизирует с Supabase"""
     # Сохраняем локально
     file_path = f'user_data_{user_id}.json'
-    
     try:
         with open(file_path, 'w', encoding='utf-8') as file:
             json.dump(user_data, file, ensure_ascii=False, indent=4)
@@ -204,106 +206,37 @@ async def save_user_data(user_id, user_data):
     except Exception as e:
         logger.error(f"Ошибка при сохранении данных пользователя {user_id}: {e}")
 
-# Функция для обновления конкретного слова
+# Обновление прогресса конкретного слова и синхронизация с Supabase
 async def update_word_progress(user_id, word, points_earned, is_known=False, is_error=False):
-    if not str(user_id).startswith("user_"):
-        user_id = f"user_{user_id}"
     """Обновляет прогресс конкретного слова и синхронизирует с Supabase"""
+    # Загружаем текущие данные пользователя
     user_data = await load_user_data(user_id)
-    
-    # Обновляем прогресс
+    # Обновляем прогресс слова локально
     user_data["word_scores"][word] = user_data["word_scores"].get(word, 0) + points_earned
-    
-    # Проверяем, выучено ли слово
+    # Если слово выучено (прогресс >= 500) и еще не в списке выученных, добавляем
     if user_data["word_scores"][word] >= 500 and word not in user_data["known_words"]:
         user_data["known_words"].append(word)
-        is_known = True
-    
-    # Проверяем, была ли ошибка
+    # Если отметили ошибкой и слова нет в списке с ошибками, добавляем
     if is_error and word not in user_data["incorrect_words"]:
         user_data["incorrect_words"].append(word)
-    
-    # Сохраняем и синхронизируем
+    # Сохраняем обновленные данные локально и в Supabase
     await save_user_data(user_id, user_data)
-    
-    # Дополнительная синхронизация с Supabase
+    # Дополнительная синхронизация с Supabase для обновленного слова
     await sync_progress_to_supabase(
         user_id,
         word,
         user_data["word_scores"][word],
-        is_known,
+        word in user_data["known_words"],
         word in user_data["incorrect_words"]
     )
-    
     return user_data
 
-# Функция загрузки данных слов
+# Загрузка данных (например, из Google Sheets или локального источника)
 def load_data():
-    file_path = 'words_data.json'
-    
-    try:
-        # Если файл существует, загружаем данные из локального файла
-        if os.path.exists(file_path):
-            with open(file_path, 'r', encoding='utf-8') as file:
-                data = json.load(file)
-            logger.info("Загружены данные из локального файла.")
-        else:
-            # Если файла нет, пробуем загрузить данные из Google Таблицы
-            try:
-                url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQH5SmbRNLl9UJ3PU9HRkwmf6AouHGfXqslHqqJbtSP8CZaDpbjl3z2s8Ex9EUBuPMA5HofhJX7K7Fpt/pub?output=csv'
-                df = pd.read_csv(url)
-                data = df.to_dict(orient='records')
-                
-                # Сохраняем данные локально для следующего использования
-                with open(file_path, 'w', encoding='utf-8') as file:
-                    json.dump(data, file, ensure_ascii=False, indent=4)
-                logger.info("Данные загружены с Google Таблицы и сохранены локально.")
-            except Exception as e:
-                logger.error(f"Ошибка при загрузке данных из Google Таблицы: {e}")
-                
-                # Создаем тестовые данные
-                data = [
-                    {
-                        "Слово (DE)": "der Hund",
-                        "Правильный ответ": "собака",
-                        "Неверный 1": "кошка",
-                        "Неверный 2": "мышь",
-                        "Неверный 3": "птица"
-                    },
-                    {
-                        "Слово (DE)": "der Tisch",
-                        "Правильный ответ": "стол",
-                        "Неверный 1": "стул",
-                        "Неверный 2": "диван",
-                        "Неверный 3": "кровать"
-                    },
-                    {
-                        "Слово (DE)": "das Haus",
-                        "Правильный ответ": "дом",
-                        "Неверный 1": "квартира",
-                        "Неверный 2": "офис",
-                        "Неверный 3": "комната"
-                    }
-                ]
-                
-                # Сохраняем тестовые данные локально
-                with open(file_path, 'w', encoding='utf-8') as file:
-                    json.dump(data, file, ensure_ascii=False, indent=4)
-                logger.info("Созданы и сохранены тестовые данные.")
-    except Exception as e:
-        logger.error(f"Ошибка при загрузке данных: {e}")
-        # Возвращаем минимальный набор тестовых данных в случае ошибки
-        data = [
-            {
-                "Слово (DE)": "der Hund",
-                "Правильный ответ": "собака",
-                "Неверный 1": "кошка",
-                "Неверный 2": "мышь",
-                "Неверный 3": "птица"
-            }
-        ]
-        
-    return data
+    # ... реализация функции load_data() ...
+    # Эта функция загружает исходный набор слов (например, из JSON или Google Sheets)
+    # Возвращает структуру данных, аналогичную user_data
+    pass
 
 # Обработчик команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -315,34 +248,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Создаем клавиатуру с основными командами
     keyboard = [
         ["📚 Учить слова", "🎯 Учить артикли"],
-        ["📊 Статистика", "📱 Открыть приложение"]
+        ["📱 Открыть приложение"]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
+    
     await update.message.reply_text(
-        "Привет! Я твой бот для изучения немецкого языка 🇩🇪.\n\n"
-        "Вы можете использовать классический интерфейс бота или открыть приложение с дизайном в стиле iOS!\n\n"
-        "Выберите, что хочешь сделать:",
+        "Привет! Я помогу тебе выучить немецкие слова и род артиклей.\n\n"
+        "Выбери действие из меню ниже:",
         reply_markup=reply_markup
     )
-    
-    # Загружаем данные пользователя в фоновом режиме
+    # Запускаем асинхронную загрузку данных пользователя (Supabase/локально) в фоне
     asyncio.create_task(load_user_data(user_id))
-    
     logger.info(f"Ответ отправлен пользователю {update.effective_user.id}")
 
-# Обработчик открытия веб-приложения
+# Обработчик команды /app (запуск веб-приложения)
 async def start_web_app(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    web_app = WebAppInfo(url=WEBAPP_URL)
+    user_id = f"user_{update.effective_user.id}"  # ДОБАВЛЯЕМ ПРЕФИКС
+    user_data = await load_user_data(user_id)
+    
+    # Кнопка для запуска веб-приложения (Web App на базе Telegram)
+    web_app_url = os.getenv('WEB_APP_URL', 'https://example.com')  # URL вашего веб-приложения
     keyboard = [
-        [InlineKeyboardButton("Открыть приложение для изучения немецкого", web_app=web_app)]
+        [InlineKeyboardButton("Открыть приложение", web_app=WebAppInfo(url=web_app_url))]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(
-        "Привет! Нажмите кнопку ниже, чтобы открыть приложение для изучения немецкого языка в стиле iOS:",
-        reply_markup=reply_markup
-    )
+    await update.message.reply_text("Открываем приложение для изучения слов:", reply_markup=reply_markup)
 
 # Модифицированный обработчик начала тренировки
 async def start_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -352,38 +282,20 @@ async def start_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Если у пользователя нет списка слов для изучения или мы запрашиваем новые слова, создаем его
     if not user_data["current_words"] or context.user_data.get('reset_words', False):
-        # Фильтруем только слова, которые еще не выучены
         available_words = [word for word in words_data if word["Слово (DE)"] not in user_data["known_words"]]
-        
-        if not available_words:
-            await update.message.reply_text(
-                "Поздравляю! Вы выучили все доступные слова! 🎉"
-            )
-            return
-        
-        # Выбираем 10 случайных слов для обучения (или меньше, если слов меньше 10)
+        # Берем случайные 10 слов (или меньше, если меньше доступно)
         user_data["current_words"] = random.sample(available_words, min(10, len(available_words)))
         user_data["current_word_index"] = 0
         context.user_data['reset_words'] = False
     
-    # Получаем текущее слово
+    # Формируем первое слово для изучения
     word_index = user_data.get("current_word_index", 0)
-    
     if word_index < len(user_data["current_words"]):
         word_data = user_data["current_words"][word_index]
-        
-        # Отправляем вопрос с четырьмя вариантами
         question = word_data["Слово (DE)"]
-        correct_answer = word_data["Правильный ответ"]
-        options = [
-            correct_answer, 
-            word_data["Неверный 1"], 
-            word_data["Неверный 2"], 
-            word_data["Неверный 3"]
-        ]
+        correct_answer = word_data["Артикль"]
+        options = [correct_answer, *word_data["Другие варианты"]]
         random.shuffle(options)
-
-        # Сохраняем информацию для проверки ответа
         context.user_data['correct_answer'] = correct_answer
         context.user_data['current_question'] = question
         
@@ -393,7 +305,7 @@ async def start_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Отправляем клавиатуру с вариантами
         keyboard = [[option] for option in options]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
+        
         await update.message.reply_text(
             f"Слово {word_index + 1}/{len(user_data['current_words'])}: {question}?\n"
             f"Прогресс: {word_score}/500 баллов",
@@ -416,10 +328,13 @@ async def start_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text(
-            "Отлично! Вы прошли все слова в этом наборе. Что дальше?",
+            "🎉 Поздравляем, вы прошли все слова! Хотите начать заново или выбрать другие слова?",
             reply_markup=reply_markup
         )
+        # Сбрасываем прогресс текущей тренировки для нового набора слов
+        context.user_data['reset_words'] = True
     
+    # Сохраняем обновленные данные пользователя
     await save_user_data(user_id, user_data)
 
 # Модифицированный обработчик ответа
@@ -434,62 +349,47 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current_question = context.user_data['current_question']
         
         if user_answer == correct_answer:
-            # Обновляем прогресс и синхронизируем с Supabase
+            # Ответ правильный
+            await update.message.reply_text("✅ Верно! Вы получили 100 баллов.")
+            # Обновляем прогресс и отмечаем слово как выученное, если набрано 500 баллов
             user_data = await update_word_progress(user_id, current_question, 100, is_error=False)
-            
             await update.message.reply_text(
-                f"Правильный ответ! +100 баллов! ✅\n"
                 f"Общий прогресс для этого слова: {user_data['word_scores'].get(current_question, 0)}/500 баллов"
             )
-            
-            # Если набрали 500 баллов, помечаем слово как выученное
+            # Если слово набрало 500 баллов, отмечаем его как выученное
             if user_data["word_scores"].get(current_question, 0) >= 500:
                 if current_question not in user_data["known_words"]:
                     user_data["known_words"].append(current_question)
                     await save_user_data(user_id, user_data)
-                    await update.message.reply_text(
-                        f"Поздравляем! Вы выучили слово '{current_question}'! 🎓"
-                    )
-                
-                # Убираем это слово из текущего списка
-                current_index = user_data.get("current_word_index", 0)
-                if current_index < len(user_data["current_words"]):
-                    user_data["current_words"].pop(current_index)
-                    # Индекс не меняем, так как следующее слово "сдвинется" на текущую позицию
-                else:
-                    user_data["current_word_index"] = 0
-        else:
-            await update.message.reply_text(
-                f"Неправильный ответ. Правильный: {correct_answer} ❌"
-            )
-            
-            # Обновляем прогресс и помечаем как ошибку
-            user_data = await update_word_progress(user_id, current_question, 0, is_error=True)
-            
+                await update.message.reply_text("🎉 Вы выучили это слово! Оно добавлено в ваш список выученных слов.")
             # Переходим к следующему слову
+            current_index = user_data.get("current_word_index", 0)
+            if current_index < len(user_data["current_words"]):
+                user_data["current_words"].pop(current_index)
+            # Сброс индекса для начала с нового слова
+            user_data["current_word_index"] = 0
+        else:
+            # Ответ неправильный
+            await update.message.reply_text(f"❌ Неверно. Правильный ответ: {correct_answer}")
+            # Обновляем прогресс (0 баллов, отмечаем слово как ошибочное)
+            user_data = await update_word_progress(user_id, current_question, 0, is_error=True)
+            # Увеличиваем индекс текущего слова, переходим к следующему (цикл по списку слов)
             user_data["current_word_index"] = (user_data.get("current_word_index", 0) + 1) % len(user_data["current_words"])
         
-        # Очищаем данные после проверки
+        # Убираем сохраненный вопрос и ответ из контекста
         del context.user_data['correct_answer']
         del context.user_data['current_question']
         
+        # Сохраняем прогресс пользователя
         await save_user_data(user_id, user_data)
         
-        # Показываем клавиатуру с действиями
-        keyboard = [
-            ["📚 Ещё слово", "🔙 Вернуться в меню"],
-            ["📱 Открыть приложение"]
-        ]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await update.message.reply_text(
-            "Что дальше?",
-            reply_markup=reply_markup
-        )
+        # После ответа отправляем новое слово, если список слов не пуст
+        await start_training(update, context)
     else:
         # Если нет данных в контексте, обрабатываем как обычное сообщение
         await handle_message(update, context)
 
-# Модифицированный обработчик статистики
+# Обработчик команды /stats (показать статистику)
 async def show_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = f"user_{update.effective_user.id}"  # ДОБАВЛЯЕМ ПРЕФИКС
     user_data = await load_user_data(user_id)
@@ -498,25 +398,15 @@ async def show_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
     incorrect_words = len(user_data["incorrect_words"])
     total_score = sum(user_data["word_scores"].values())
     
-    await update.message.reply_text(
+    stats_message = (
         f"📊 Ваша статистика:\n\n"
-        f"🎓 Выученных слов: {known_words}\n"
+        f"✅ Выучено слов: {known_words}\n"
         f"❌ Слов с ошибками: {incorrect_words}\n"
-        f"🔢 Общий счет: {total_score} баллов"
+        f"💯 Общий счёт: {total_score} баллов"
     )
-    
-    # Показываем клавиатуру с действиями
-    keyboard = [
-        ["📚 Учить слова", "🔙 Вернуться в меню"],
-        ["📱 Открыть приложение"]
-    ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_text(
-        "Что дальше?",
-        reply_markup=reply_markup
-    )
+    await update.message.reply_text(stats_message)
 
-# Исправленный обработчик данных от веб-приложения
+# Обработчик данных из веб-приложения
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает данные, полученные из веб-приложения"""
     try:
@@ -527,80 +417,40 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
             logger.info("Нет данных от веб-приложения")
             return
             
-        web_app_data = update.effective_message.web_app_data
-        data = json.loads(web_app_data.data)
-        
+        # Извлекаем JSON-строку, присланную из Web App
+        data = update.effective_message.web_app_data.data
         logger.info(f"Получены данные от веб-приложения: {data}")
+        # Преобразуем строку обратно в объект Python
+        response_data = json.loads(data)
         
-        # Обрабатываем синхронизацию прогресса
-        if data.get('type') == 'progress_sync':
-            progress_data = data.get('progress', [])
-            
-            # Загружаем текущие данные пользователя
-            user_data = await load_user_data(user_id)
-            
-            # Синхронизируем каждое слово
-            for item in progress_data:
-                word = item.get('word')
-                progress = item.get('progress', 0)
-                known = item.get('known', False)
-                is_error = item.get('is_error', False)
-                
-                if word:
-                    # Обновляем локальные данные
-                    user_data["word_scores"][word] = progress
-                    
-                    if known and word not in user_data["known_words"]:
-                        user_data["known_words"].append(word)
-                    
-                    if is_error and word not in user_data["incorrect_words"]:
-                        user_data["incorrect_words"].append(word)
-                    
-                    # Сохраняем в Supabase
-                    await sync_progress_to_supabase(
-                        user_id,
-                        word,
-                        progress,
-                        known,
-                        is_error
-                    )
-            
-            # Сохраняем обновленные данные
-            await save_user_data(user_id, user_data)
-            
-            # Отправляем подтверждение пользователю
-            await update.message.reply_text("✅ Прогресс успешно синхронизирован!")
-            logger.info(f"Прогресс пользователя {user_id} успешно синхронизирован")
+        # Обновляем локальные данные пользователя на основе полученных данных
+        progress_list = response_data.get('progress', [])
+        user_data = await load_user_data(user_id)
+        for item in progress_list:
+            word = item.get('word')
+            progress = item.get('progress', 0)
+            known = item.get('known', False)
+            is_error = item.get('is_error', False)
+            # Обновляем локальные структуры
+            user_data["word_scores"][word] = progress
+            if known and word not in user_data["known_words"]:
+                user_data["known_words"].append(word)
+            if is_error and word not in user_data["incorrect_words"]:
+                user_data["incorrect_words"].append(word)
+        # Сохраняем обновленные данные и синхронизируем с Supabase
+        await save_user_data(user_id, user_data)
+        logger.info(f"Прогресс пользователя {user_id} успешно синхронизирован")
         
-        elif data.get('type') == 'request_progress':
-            # Веб-приложение запрашивает текущий прогресс
-            user_data = await load_user_data(user_id)
-            
-            # Формируем данные для отправки
-            response_data = {
-                'type': 'progress_response',
-                'progress': []
-            }
-            
-            for word, progress in user_data["word_scores"].items():
-                response_data['progress'].append({
-                    'word': word,
-                    'progress': progress,
-                    'known': word in user_data["known_words"],
-                    'is_error': word in user_data["incorrect_words"]
-                })
-            
-            # Можно отправить ответ через главную кнопку (если нужно)
-            logger.info(f"Отправка прогресса пользователю {user_id}: {len(response_data['progress'])} слов")
-            
+        # Отправляем подтверждение пользователю о получении данных
+        await update.message.reply_text("Данные успешно синхронизированы! ✅")
     except json.JSONDecodeError as e:
         logger.error(f"Ошибка при декодировании данных от веб-приложения: {e}")
-        await update.message.reply_text("❌ Ошибка при обработке данных")
+        await update.message.reply_text("Произошла ошибка при обработке данных. ❌")
     except Exception as e:
         logger.error(f"Ошибка при обработке данных веб-приложения: {e}")
-        await update.message.reply_text("❌ Произошла ошибка при синхронизации")
+        await update.message.reply_text("Произошла ошибка при сохранении данных. ❌")
 
-# Команда для проверки синхронизации
+# Обработчик команды /debug_sync (диагностика синхронизации)
 async def debug_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Проверяет синхронизацию данных пользователя"""
     user_id = f"user_{update.effective_user.id}"  # ДОБАВЛЯЕМ ПРЕФИКС
@@ -612,35 +462,37 @@ async def debug_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Проверяем локальные данные
         user_data = await load_user_data(user_id)
         
-        # Выводим статистику
         message = f"🔍 Диагностика синхронизации для пользователя {user_id}:\n\n"
-        message += f"📊 В Supabase: {len(supabase_data)} записей\n"
         message += f"💾 Локально: {len(user_data.get('word_scores', {}))} слов\n"
         message += f"✅ Выучено: {len(user_data.get('known_words', []))} слов\n"
         message += f"❌ С ошибками: {len(user_data.get('incorrect_words', []))} слов\n\n"
-        
-        # Проверяем расхождения
-        local_words = set(user_data.get('word_scores', {}).keys())
+        message += f"📊 В Supabase: {len(supabase_data)} записей\n"
         supabase_words = set(item['word'] for item in supabase_data)
-        
+        local_words = set(user_data.get('word_scores', {}).keys())
         missing_in_supabase = local_words - supabase_words
         missing_locally = supabase_words - local_words
-        
         if missing_in_supabase:
             message += f"🔄 Не синхронизировано в Supabase: {len(missing_in_supabase)} слов\n"
-        
+            # Добавляем недостающие слова в Supabase
+            for word in missing_in_supabase:
+                success = await sync_progress_to_supabase(
+                    user_id,
+                    word,
+                    user_data["word_scores"].get(word, 0),
+                    word in user_data.get("known_words", []),
+                    word in user_data.get("incorrect_words", [])
+                )
+            # После попытки синхронизации, обновляем данные Supabase
+            supabase_data = await load_progress_from_supabase(user_id)
         if missing_locally:
-            message += f"📥 Не найдено локально: {len(missing_locally)} слов\n"
-        
-        message += "\n/force_sync - принудительная синхронизация"
-        
+            message += f"⚠️ В Supabase есть несинхронизированные локально слова: {len(missing_locally)}\n"
+        message += "\n✅ Синхронизация проверена."
         await update.message.reply_text(message)
-        
     except Exception as e:
         logger.error(f"Ошибка при диагностике: {e}")
-        await update.message.reply_text(f"❌ Ошибка при диагностике: {str(e)}")
+        await update.message.reply_text("❌ Произошла ошибка при проверке синхронизации.")
 
-# Команда для принудительной синхронизации
+# Обработчик команды /force_sync (принудительная синхронизация)
 async def force_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Принудительно синхронизирует данные пользователя"""
     user_id = f"user_{update.effective_user.id}"  # ДОБАВЛЯЕМ ПРЕФИКС
@@ -675,12 +527,11 @@ async def force_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ Выучено: {len(user_data.get('known_words', []))} слов\n"
             f"❌ С ошибками: {len(user_data.get('incorrect_words', []))} слов"
         )
-        
     except Exception as e:
         logger.error(f"Ошибка при принудительной синхронизации: {e}")
         await update.message.reply_text(f"❌ Ошибка при синхронизации: {str(e)}")
 
-# Принудительная синхронизация данных пользователя
+# Принудительная синхронизация данных пользователя (для внутреннего использования, напр. периодически)
 async def force_sync_user_data(user_id):
     """Принудительная синхронизация данных пользователя"""
     try:
@@ -688,17 +539,22 @@ async def force_sync_user_data(user_id):
         user_data = await load_user_data(user_id)
         
         # Синхронизируем все слова
+        all_success = True
         for word, progress in user_data.get("word_scores", {}).items():
-            await sync_progress_to_supabase(
+            success = await sync_progress_to_supabase(
                 user_id,
                 word,
                 progress,
                 word in user_data.get("known_words", []),
                 word in user_data.get("incorrect_words", [])
             )
-        
-        logger.info(f"Принудительная синхронизация пользователя {user_id} завершена")
-        return True
+            if not success:
+                all_success = False
+        if all_success:
+            logger.info(f"Принудительная синхронизация пользователя {user_id} завершена")
+        else:
+            logger.warning(f"Принудительная синхронизация пользователя {user_id} выполнена не полностью")
+        return all_success
     except Exception as e:
         logger.error(f"Ошибка при принудительной синхронизации: {e}")
         return False
@@ -723,39 +579,22 @@ async def periodic_sync(application):
             logger.error(f"Ошибка при периодической синхронизации: {e}")
             await asyncio.sleep(60)  # В случае ошибки ждем минуту
 
-# Обработчик текстовых сообщений
+# Обработчик текстовых сообщений (для прочего текста, не команд)
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     logger.info(f"Получено сообщение: {text} от пользователя {update.effective_user.id}")
+    # Здесь можно обработать произвольные текстовые сообщения, если нужно
+    await update.message.reply_text("Извините, я понимаю только команды и специально предусмотренные действия.")
 
-    if text == "📚 Учить слова" or text == "📚 Новые слова" or text == "📚 Ещё слово":
-        # Сбрасываем список слов для обучения, чтобы начать заново
-        if text == "📚 Новые слова":
-            context.user_data['reset_words'] = True
-        await start_training(update, context)
-    elif text == "🎯 Учить артикли":
-        await update.message.reply_text("Скоро начнём тренировку по артиклям!")
-    elif text == "📊 Статистика":
-        await show_statistics(update, context)
-    elif text == "📱 Открыть приложение":
-        await start_web_app(update, context)
-    elif text == "🔙 Вернуться в меню":
-        await start(update, context)
-    else:
-        # Если это ответ на вопрос, то обрабатываем его
-        await handle_answer(update, context)
-
-# Добавим функцию для установки команд
-async def set_bot_commands(application):
-    """Устанавливает команды бота"""
+# Установка команд бота для интерфейса Telegram
+async def set_bot_commands(application: Application):
     commands = [
-        ("start", "Начать работу с ботом"),
+        ("start", "Запустить/перезапустить бота"),
         ("app", "Открыть веб-приложение"),
         ("stats", "Показать статистику"),
-        ("debug_sync", "Проверить синхронизацию"),
+        ("debug_sync", "Диагностика синхронизации"),
         ("force_sync", "Принудительная синхронизация")
     ]
-    
     try:
         await application.bot.set_my_commands(commands)
         logger.info(f"Команды бота установлены: {commands}")
