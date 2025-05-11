@@ -25,21 +25,45 @@ WEBAPP_URL = "https://djys0912.github.io/dzhussolingvobot/german_app.html"
 # Настройка подключения к Supabase
 SUPABASE_URL = os.getenv('SUPABASE_URL', 'https://oyppivnywdzbdqmugwfp.supabase.co')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im95cHBpdm55d2R6YmRxbXVnd2ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY3MjE3NzUsImV4cCI6MjA2MjI5Nzc3NX0.GspH-GCes-8d001Ox8oRao2_5jOHy1wEYlGrel5WHMI')
-supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# ИСПРАВЛЕННАЯ инициализация Supabase
+supabase_client = None
+
+def init_supabase():
+    """Инициализация Supabase клиента"""
+    global supabase_client
+    try:
+        # Создаем клиента без дополнительных параметров
+        supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        logger.info("Supabase клиент успешно инициализирован")
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка при инициализации Supabase: {e}")
+        return False
 
 # Исправленная функция инициализации Supabase таблиц
 def init_supabase_tables():
+    global supabase_client
+    if not supabase_client:
+        init_supabase()
+    
     try:
         # Используем синхронный вызов вместо async
         result = supabase_client.table('progress').select('*').limit(1).execute()
         logger.info("Таблица progress уже существует")
+        return True
     except Exception as e:
         logger.error(f"Ошибка при проверке таблиц: {e}")
         # Если таблица не существует, можно создать её вручную в Supabase Dashboard
+        return False
 
 # Функция для синхронизации прогресса пользователя с Supabase
 async def sync_progress_to_supabase(user_id, word, progress, known=False, is_error=False):
     """Сохраняет или обновляет прогресс в Supabase"""
+    global supabase_client
+    if not supabase_client:
+        init_supabase()
+    
     try:
         # Проверяем, существует ли уже запись
         existing = supabase_client.table('progress').select('*').eq('user_id', user_id).eq('word', word).execute()
@@ -69,6 +93,10 @@ async def sync_progress_to_supabase(user_id, word, progress, known=False, is_err
 # Функция для загрузки прогресса пользователя из Supabase
 async def load_progress_from_supabase(user_id):
     """Загружает весь прогресс пользователя из Supabase"""
+    global supabase_client
+    if not supabase_client:
+        init_supabase()
+    
     try:
         response = supabase_client.table('progress').select('*').eq('user_id', user_id).execute()
         
@@ -274,7 +302,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Получена команда /start от пользователя {update.effective_user.id}")
     
     # При старте загружаем прогресс пользователя для синхронизации в фоне
-    user_id = update.effective_user.id
+    user_id = f"user_{update.effective_user.id}"  # ДОБАВЛЯЕМ ПРЕФИКС
     
     # Создаем клавиатуру с основными командами
     keyboard = [
@@ -310,7 +338,7 @@ async def start_web_app(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Модифицированный обработчик начала тренировки
 async def start_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    user_id = f"user_{update.effective_user.id}"  # ДОБАВЛЯЕМ ПРЕФИКС
     user_data = await load_user_data(user_id)
     words_data = load_data()
     
@@ -388,7 +416,7 @@ async def start_training(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Модифицированный обработчик ответа
 async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    user_id = f"user_{update.effective_user.id}"  # ДОБАВЛЯЕМ ПРЕФИКС
     user_data = await load_user_data(user_id)
     user_answer = update.message.text
     
@@ -455,7 +483,7 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Модифицированный обработчик статистики
 async def show_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    user_id = f"user_{update.effective_user.id}"  # ДОБАВЛЯЕМ ПРЕФИКС
     user_data = await load_user_data(user_id)
     
     known_words = len(user_data["known_words"])
@@ -484,7 +512,7 @@ async def show_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает данные, полученные из веб-приложения"""
     try:
-        user_id = update.effective_user.id
+        user_id = f"user_{update.effective_user.id}"  # ДОБАВЛЯЕМ ПРЕФИКС
         
         # Проверяем, есть ли данные от веб-приложения
         if not hasattr(update.effective_message, 'web_app_data') or not update.effective_message.web_app_data:
@@ -567,7 +595,7 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
 # Команда для проверки синхронизации
 async def debug_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Проверяет синхронизацию данных пользователя"""
-    user_id = update.effective_user.id
+    user_id = f"user_{update.effective_user.id}"  # ДОБАВЛЯЕМ ПРЕФИКС
     
     try:
         # Проверяем данные в Supabase
@@ -607,7 +635,7 @@ async def debug_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Команда для принудительной синхронизации
 async def force_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Принудительно синхронизирует данные пользователя"""
-    user_id = update.effective_user.id
+    user_id = f"user_{update.effective_user.id}"  # ДОБАВЛЯЕМ ПРЕФИКС
     
     try:
         await update.message.reply_text("🔄 Начинаем принудительную синхронизацию...")
@@ -674,7 +702,7 @@ async def periodic_sync(application):
         try:
             # Получаем список всех пользователей из локальных файлов
             import glob
-            user_files = glob.glob('user_data_*.json')
+            user_files = glob.glob('user_data_user_*.json')  # ИЗМЕНЯЕМ ПАТТЕРН
             
             for file in user_files:
                 user_id = file.replace('user_data_', '').replace('.json', '')
@@ -743,7 +771,8 @@ def main():
     application = Application.builder().token(token).build()
     
     # Инициализируем Supabase таблицы (синхронно)
-    init_supabase_tables()
+    if not init_supabase_tables():
+        logger.warning("Не удалось инициализировать таблицы Supabase, бот будет работать без базы данных")
     
     # Устанавливаем команды бота
     loop = asyncio.get_event_loop()
@@ -770,5 +799,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-        
-      
