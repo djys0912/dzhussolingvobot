@@ -271,6 +271,8 @@ def load_data():
 
 # Обработчик команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f"Получена команда /start от пользователя {update.effective_user.id}")
+    
     # При старте загружаем прогресс пользователя для синхронизации в фоне
     user_id = update.effective_user.id
     
@@ -290,6 +292,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Загружаем данные пользователя в фоновом режиме
     asyncio.create_task(load_user_data(user_id))
+    
+    logger.info(f"Ответ отправлен пользователю {update.effective_user.id}")
 
 # Обработчик открытия веб-приложения
 async def start_web_app(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -524,6 +528,7 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
 # Обработчик текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
+    logger.info(f"Получено сообщение: {text} от пользователя {update.effective_user.id}")
 
     if text == "📚 Учить слова" or text == "📚 Новые слова" or text == "📚 Ещё слово":
         # Сбрасываем список слов для обучения, чтобы начать заново
@@ -542,19 +547,43 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Если это ответ на вопрос, то обрабатываем его
         await handle_answer(update, context)
 
+# Добавим функцию для установки команд
+async def set_bot_commands(application):
+    """Устанавливает команды бота"""
+    commands = [
+        ("start", "Начать работу с ботом"),
+        ("app", "Открыть веб-приложение"),
+        ("stats", "Показать статистику")
+    ]
+    
+    try:
+        await application.bot.set_my_commands(commands)
+        logger.info(f"Команды бота установлены: {commands}")
+    except Exception as e:
+        logger.error(f"Ошибка при установке команд: {e}")
+
 def main():
     """Запуск бота"""
+    # ДОБАВЛЯЕМ ДЕБАГ ЛОГИРОВАНИЕ
+    logging.getLogger().setLevel(logging.DEBUG)
+    
     # Получаем токен из .env
     token = os.getenv("BOT_TOKEN")
     if not token:
         logger.error("BOT_TOKEN не найден в переменных окружения!")
         return
     
+    logger.info(f"Запуск бота с токеном: {token[:10]}...")
+    
     # Создаем приложение
     application = Application.builder().token(token).build()
     
     # Инициализируем Supabase таблицы (синхронно)
     init_supabase_tables()
+    
+    # Устанавливаем команды бота
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(set_bot_commands(application))
     
     # Регистрируем обработчики
     application.add_handler(CommandHandler("start", start))
@@ -565,7 +594,10 @@ def main():
     
     # Запускаем бота
     logger.info("Запуск бота...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+    try:
+        application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+    except Exception as e:
+        logger.error(f"Ошибка при запуске бота: {e}")
 
 if __name__ == "__main__":
     main()
