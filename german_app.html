@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Изучение немецкого языка</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.7/dist/umd/supabase.min.js"></script>
     <style>
         /* --- Стили для светлой и темной темы, улучшенное оформление экранов --- */
         * {margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-tap-highlight-color:transparent;}
@@ -328,13 +327,6 @@
     let timerInterval;
     let timeLeft = 10;
 
-    // --- Supabase параметры ---
-    const SUPABASE_URL = "https://oyppivnywdzbdqmugwfp.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im95cHBpdm55d2R6YmRxbXVnd2ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY3MjE3NzUsImV4cCI6MjA2MjI5Nzc3NX0.GspH-GCes-8d001Ox8oRao2_5jOHy1wEYlGrel5WHMI";
-    
-    // Инициализация Supabase
-    const { createClient } = supabase;
-    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
 
     // Получить userId из Telegram WebApp или сгенерировать временный
     let userId = null;
@@ -348,83 +340,21 @@
     console.log('Current user ID:', userId);
     console.log('Telegram WebApp data:', tg.initDataUnsafe);
 
-    // --- Функция сохранения прогресса в Supabase ---
-    async function saveProgress(userId, word, progress, known = false, isError = false) {
-        try {
-            console.log('Saving progress:', { userId, word, progress, known, isError });
-            
-            const progressData = {
-                user_id: userId, // Без добавления префикса
-                word: word,
-                progress: progress,
-                known: known,
-                is_error: isError,
-                updated_at: new Date().toISOString()
-            };
 
-            const { data, error } = await supabaseClient
-                .from('progress')
-                .upsert([progressData], { onConflict: 'user_id,word' });
-            
-            if (error) {
-                console.error('Ошибка при сохранении прогресса:', error);
-                return false;
-            } else {
-                console.log('Прогресс успешно сохранен:', data);
-                return true;
-            }
-        } catch (err) {
-            console.error('Ошибка при сохранении прогресса:', err);
-            return false;
-        }
-    }
-
-    // --- Функция загрузки прогресса из Supabase ---
-    async function loadProgress(userId) {
-        try {
-            console.log('Loading progress for user:', userId);
-            
-            const { data, error } = await supabaseClient
-                .from('progress')
-                .select('*')
-                .eq('user_id', userId);
-                
-            if (error) {
-                console.error('Ошибка при загрузке прогресса:', error);
-                return [];
-            }
-            
-            console.log('Loaded progress:', data);
-            return data || [];
-        } catch (err) {
-            console.error('Ошибка при загрузке прогресса:', err);
-            return [];
-        }
-    }
-
-    // --- Функция синхронизации с ботом ---
-    async function syncWithBot(progressData) {
+    // --- Функция синхронизации с Firebase ---
+    async function syncWithFirebase(progressData) {
         try {
             if (tg && tg.sendData) {
-                const syncData = {
+                tg.sendData(JSON.stringify({
                     type: 'progress_sync',
                     progress: progressData
-                };
-                console.log('Syncing with bot:', syncData);
-                tg.sendData(JSON.stringify(syncData));
-                
-                // Ждем немного для обработки бота
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                
+                }));
                 return true;
-            } else {
-                console.log('Telegram WebApp sendData not available');
-                return false;
             }
-        } catch (error) {
-            console.error('Ошибка при синхронизации с ботом:', error);
-            return false;
+        } catch (e) {
+            console.error("Ошибка при отправке в Firebase:", e);
         }
+        return false;
     }
 
     // --- Функция загрузки всех данных при старте ---
@@ -439,7 +369,7 @@
             await loadWords();
             
             // Загружаем прогресс пользователя
-            const progressData = await loadProgress(userId);
+            const progressData = []; // Firebase загрузка позже
             
             // Обновляем локальные данные на основе загруженного прогресса
             updateLocalDataFromProgress(progressData);
@@ -453,7 +383,7 @@
             // Запускаем периодическую синхронизацию
             setInterval(async () => {
                 const currentProgress = collectProgressData();
-                await syncWithBot(currentProgress);
+                await syncWithFirebase(currentProgress);
             }, 60000); // Синхронизация каждые 60 секунд
             
         } catch (error) {
@@ -610,14 +540,9 @@
                 console.log('Word added to known words:', currentWord.word);
             }
             
-            // Сохраняем прогресс в Supabase
-            const saveSuccess = await saveProgress(userId, currentWord.word, currentWord.progress, isKnown, false);
-            console.log('Save to Supabase result:', saveSuccess);
-            
-            // Синхронизируем с ботом
+            // Синхронизируем с Firebase
             const progressData = collectProgressData();
-            const syncSuccess = await syncWithBot(progressData);
-            console.log('Sync with bot result:', syncSuccess);
+            await syncWithFirebase(progressData);
             
             document.getElementById('result-title').textContent = 'Правильно!';
             document.getElementById('result-message').textContent = `Вы получили ${earnedPoints} баллов. Общий прогресс: ${currentWord.progress}/500`;
@@ -633,14 +558,9 @@
                 console.log('Word added to error words:', currentWord.word);
             }
             
-            // Сохраняем прогресс с флагом ошибки
-            const saveSuccess = await saveProgress(userId, currentWord.word, currentWord.progress, false, true);
-            console.log('Save error to Supabase result:', saveSuccess);
-            
-            // Синхронизируем с ботом
+            // Синхронизируем с Firebase
             const progressData = collectProgressData();
-            const syncSuccess = await syncWithBot(progressData);
-            console.log('Sync error with bot result:', syncSuccess);
+            await syncWithFirebase(progressData);
             
             document.getElementById('result-title').textContent = 'Неправильно';
             document.getElementById('result-message').textContent = `Правильный ответ: ${currentWord.translation}`;
@@ -805,48 +725,7 @@
         if (screenId === 'learn-screen') showCurrentWord();
     }
 
-    // Добавляем функцию для принудительной синхронизации
-    async function forceSyncAll() {
-        console.log('Force syncing all data...');
-        document.getElementById('sync-overlay').style.display = 'flex';
-        document.getElementById('sync-overlay').textContent = 'Синхронизация данных...';
-        
-        try {
-            // Собираем все данные о прогрессе
-            const progressData = collectProgressData();
-            
-            // Сохраняем все в Supabase
-            for (const item of progressData) {
-                await saveProgress(userId, item.word, item.progress, item.known, item.is_error);
-                // Небольшая пауза между сохранениями для избежания перегрузки
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
-            
-            // Синхронизируем с ботом
-            const syncSuccess = await syncWithBot(progressData);
-            
-            if (syncSuccess) {
-                document.getElementById('sync-overlay').textContent = 'Синхронизация завершена!';
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            } else {
-                document.getElementById('sync-overlay').textContent = 'Данные сохранены локально';
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            }
-        } catch (error) {
-            console.error('Ошибка при принудительной синхронизации:', error);
-            document.getElementById('sync-overlay').textContent = 'Ошибка синхронизации';
-            await new Promise(resolve => setTimeout(resolve, 2000));
-        } finally {
-            document.getElementById('sync-overlay').style.display = 'none';
-        }
-    }
 
-    // --- Добавляем обработчик события при закрытии приложения ---
-    window.addEventListener('beforeunload', async () => {
-        // Сохраняем все данные перед закрытием
-        const progressData = collectProgressData();
-        await syncWithBot(progressData);
-    });
 
     // --- Обработчики событий ---
     document.addEventListener('DOMContentLoaded', async function() {
@@ -894,16 +773,10 @@
             if (w && !knownWords.some(kw => kw.word === w.word)) {
                 w.progress = Math.max(w.progress, 500); // Уставляем прогресс 500 если меньше
                 knownWords.push({word: w.word, progress: w.progress});
-                
-                // Сохраняем прогресс в Supabase
-                console.log('Marking word as known:', w.word);
-                await saveProgress(userId, w.word, w.progress, true, false);
-                
-                // Синхронизируем с ботом
+                // Синхронизируем с Firebase
                 const progressData = collectProgressData();
-                await syncWithBot(progressData);
+                await syncWithFirebase(progressData);
             }
-            
             goToNextWord();
         };
         
@@ -930,13 +803,13 @@
         tg.onEvent('mainButtonClicked', async () => {
             // Сохраняем прогресс при нажатии главной кнопки
             const progressData = collectProgressData();
-            await syncWithBot(progressData);
+            await syncWithFirebase(progressData);
         });
         
         tg.onEvent('backButtonClicked', async () => {
             // Сохраняем прогресс при нажатии кнопки назад
             const progressData = collectProgressData();
-            await syncWithBot(progressData);
+            await syncWithFirebase(progressData);
         });
     }
 
@@ -945,7 +818,7 @@
         if (document.visibilityState === 'visible') {
             const progressData = collectProgressData();
             if (progressData.length > 0) {
-                await syncWithBot(progressData);
+                await syncWithFirebase(progressData);
             }
         }
     }, 30000);

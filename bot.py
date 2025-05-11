@@ -9,9 +9,15 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import random
 import asyncio
 from datetime import datetime
-# Импорт для работы с Supabase
-from supabase import create_client, Client
-import aiohttp
+
+# === Firebase Admin SDK init ===
+import firebase_admin
+from firebase_admin import credentials, firestore
+
+# Используем новый ключ для резервного копирования (по инструкции)
+cred = credentials.Certificate("/etc/secrets/firebase_key.json")
+firebase_admin.initialize_app(cred)
+db = firestore.client()
 
 # Включаем логирование
 logging.basicConfig(
@@ -20,107 +26,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Настройка подключения к Supabase
-SUPABASE_URL = os.getenv('SUPABASE_URL', 'https://oyppivnywdzbdqmugwfp.supabase.co')
-SUPABASE_KEY = os.getenv('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im95cHBpdm55d2R6YmRxbXVnd2ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY3MjE3NzUsImV4cCI6MjA2MjI5Nzc3NX0.GspH-GCes-8d001Ox8oRao2_5jOHy1wEYlGrel5WHMI')
 
-# ИСПРАВЛЕННАЯ инициализация Supabase
-supabase_client = None
-
-def init_supabase():
-    """Инициализация Supabase клиента"""
-    global supabase_client
-    try:
-        # Создаем клиента без дополнительных параметров
-        supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        logger.info("Supabase клиент успешно инициализирован")
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка при инициализации Supabase: {e}")
-        return False
-
-# Исправленная функция инициализации Supabase таблиц
-def init_supabase_tables():
-    global supabase_client
-    if not supabase_client:
-        if not init_supabase():
-            # Не удалось инициализировать Supabase
-            return False
-
-    try:
-        # Используем синхронный вызов вместо async
-        result = supabase_client.table('progress').select('*').limit(1).execute()
-        logger.info("Таблица progress уже существует")
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка при проверке таблиц: {e}")
-        # Если таблица не существует, можно создать её вручную в Supabase Dashboard
-        return False
-
-# Функция для синхронизации прогресса пользователя с Supabase
-async def sync_progress_to_supabase(user_id, word, progress, known=False, is_error=False):
-    """Сохраняет или обновляет прогресс в Supabase"""
-    global supabase_client
-    if not supabase_client:
-        if not init_supabase():
-            # Не удалось инициализировать Supabase
-            return False
-
-    try:
-        # Проверяем, существует ли уже запись
-        existing = supabase_client.table('progress').select('*').eq('user_id', user_id).eq('word', word).execute()
-        
-        progress_data = {
-            "user_id": user_id,
-            "word": word,
-            "progress": progress,
-            "known": known,
-            "is_error": is_error,
-            "updated_at": datetime.utcnow().isoformat()
-        }
-        
-        if existing.data:
-            # Обновляем существующую запись
-            response = supabase_client.table('progress').update(progress_data).eq('user_id', user_id).eq('word', word).execute()
-        else:
-            # Создаем новую запись
-            response = supabase_client.table('progress').insert(progress_data).execute()
-        
-        logger.info(f"Прогресс для пользователя {user_id} обновлен: {word} - {progress}")
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка при синхронизации прогресса: {e}")
-        return False
-
-# Функция для загрузки прогресса пользователя из Supabase
-async def load_progress_from_supabase(user_id):
-    """Загружает весь прогресс пользователя из Supabase"""
-    global supabase_client
-    if not supabase_client:
-        if not init_supabase():
-            # Не удалось инициализировать Supabase
-            return []
-    
-    try:
-        response = supabase_client.table('progress').select('*').eq('user_id', user_id).execute()
-        
-        if response.data:
-            logger.info(f"Загружен прогресс для пользователя {user_id}: {len(response.data)} записей")
-            return response.data
-        else:
-            logger.info(f"Прогресс для пользователя {user_id} не найден")
-            return []
-    except Exception as e:
-        logger.error(f"Ошибка при загрузке прогресса: {e}")
-        return []
-
-# Модифицированная функция загрузки пользовательских данных
 async def load_user_data(user_id):
-    # Сначала пробуем загрузить из Supabase
-    supabase_data = await load_progress_from_supabase(user_id)
-    
-    if supabase_data:
-        # Преобразуем данные из Supabase в формат бота
+    # Сначала пробуем загрузить локальные данные
+    file_path = f'user_data_{user_id}.json'
+    try:
+        if os.path.exists(file_path):
+            with open(file_path, 'r', encoding='utf-8') as file:
+                user_data = json.load(file)
+            logger.info("Загружены данные из локального файла.")
+        else:
+            # Если локального файла нет, загружаем данные из исходного источника (например, Google Sheets)
+            user_data = load_data()
+            # Сохраняем в локальный файл
+            with open(file_path, 'w', encoding='utf-8') as file:
+                json.dump(user_data, file, ensure_ascii=False, indent=4)
+            logger.info("Данные загружены с Google Таблицы и сохранены локально.")
+    except Exception as e:
+        logger.error(f"Ошибка при загрузке данных: {e}")
+        # Если возникла ошибка, создаем пустую структуру данных
         user_data = {
             "word_scores": {},
             "known_words": [],
@@ -128,87 +52,32 @@ async def load_user_data(user_id):
             "current_words": [],
             "current_word_index": 0
         }
-        for item in supabase_data:
-            word = item['word']
-            progress = item.get('progress', 0)
-            known = item.get('known', False)
-            is_error = item.get('is_error', False)
-            user_data["word_scores"][word] = progress
-            if known and word not in user_data["known_words"]:
-                user_data["known_words"].append(word)
-            if is_error and word not in user_data["incorrect_words"]:
-                user_data["incorrect_words"].append(word)
-        # Сохраняем данные локально
-        file_path = f'user_data_{user_id}.json'
-        try:
-            with open(file_path, 'w', encoding='utf-8') as file:
-                json.dump(user_data, file, ensure_ascii=False, indent=4)
-            return user_data
-        except Exception as e:
-            logger.error(f"Ошибка при сохранении локальных данных: {e}")
-            return user_data
-    else:
-        # Если нет данных в Supabase, пробуем загрузить локально
-        file_path = f'user_data_{user_id}.json'
-        try:
-            if os.path.exists(file_path):
-                with open(file_path, 'r', encoding='utf-8') as file:
-                    user_data = json.load(file)
-                logger.info("Загружены данные из локального файла.")
-            else:
-                # Если локального файла нет, загружаем данные из исходного источника (например, Google Sheets)
-                user_data = load_data()
-                # Сохраняем в локальный файл
-                with open(file_path, 'w', encoding='utf-8') as file:
-                    json.dump(user_data, file, ensure_ascii=False, indent=4)
-                logger.info("Данные загружены с Google Таблицы и сохранены локально.")
-        except Exception as e:
-            logger.error(f"Ошибка при загрузке данных: {e}")
-            # Если возникла ошибка, создаем пустую структуру данных
-            user_data = {
-                "word_scores": {},
-                "known_words": [],
-                "incorrect_words": [],
-                "current_words": [],
-                "current_word_index": 0
-            }
-        return user_data
-
-# Функция для синхронизации локальных данных с Supabase
-async def sync_local_to_supabase(user_id, user_data):
-    """Синхронизирует локальные данные пользователя с Supabase"""
+    # Попробуем загрузить резервную копию из Firebase, если локальных данных нет
     try:
-        all_success = True
-        for word, progress in user_data.get("word_scores", {}).items():
-            known = word in user_data.get("known_words", [])
-            is_error = word in user_data.get("incorrect_words", [])
-            success = await sync_progress_to_supabase(user_id, word, progress, known, is_error)
-            if not success:
-                all_success = False
-        if all_success:
-            logger.info(f"Локальные данные пользователя {user_id} синхронизированы с Supabase")
-        else:
-            logger.warning(f"Не все данные пользователя {user_id} удалось синхронизировать")
+        doc = db.collection("user_progress").document(user_id).get()
+        if doc.exists:
+            firebase_data = doc.to_dict().get("data", {})
+            if firebase_data:
+                logger.info(f"Загружены данные из Firebase для пользователя {user_id}")
+                return firebase_data
     except Exception as e:
-        logger.error(f"Ошибка при синхронизации локальных данных: {e}")
+        logger.error(f"Ошибка при загрузке из Firebase: {e}")
+    return user_data
 
-# Функция для сохранения пользовательских данных локально и синхронизации с Supabase
+
 async def save_user_data(user_id, user_data):
-    """Сохраняет данные пользователя локально и синхронизирует с Supabase"""
-    # Сохраняем локально
+    """Сохраняет данные пользователя локально и резервную копию в Firebase"""
     file_path = f'user_data_{user_id}.json'
     try:
         with open(file_path, 'w', encoding='utf-8') as file:
             json.dump(user_data, file, ensure_ascii=False, indent=4)
-        
-        # Синхронизируем с Supabase
-        await sync_local_to_supabase(user_id, user_data)
+        # Сохраняем резервную копию в Firebase
+        await backup_to_firebase(user_id, user_data)
     except Exception as e:
         logger.error(f"Ошибка при сохранении данных пользователя {user_id}: {e}")
 
-# Обновление прогресса конкретного слова и синхронизация с Supabase
 async def update_word_progress(user_id, word, points_earned, is_known=False, is_error=False):
-    """Обновляет прогресс конкретного слова и синхронизирует с Supabase"""
+    """Обновляет прогресс конкретного слова"""
     # Загружаем текущие данные пользователя
     user_data = await load_user_data(user_id)
     # Обновляем прогресс слова локально
@@ -219,16 +88,8 @@ async def update_word_progress(user_id, word, points_earned, is_known=False, is_
     # Если отметили ошибкой и слова нет в списке с ошибками, добавляем
     if is_error and word not in user_data["incorrect_words"]:
         user_data["incorrect_words"].append(word)
-    # Сохраняем обновленные данные локально и в Supabase
+    # Сохраняем обновленные данные локально
     await save_user_data(user_id, user_data)
-    # Дополнительная синхронизация с Supabase для обновленного слова
-    await sync_progress_to_supabase(
-        user_id,
-        word,
-        user_data["word_scores"][word],
-        word in user_data["known_words"],
-        word in user_data["incorrect_words"]
-    )
     return user_data
 
 # Загрузка данных (например, из Google Sheets или локального источника)
@@ -410,19 +271,15 @@ async def show_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает данные, полученные из веб-приложения"""
     try:
-        user_id = f"user_{update.effective_user.id}"  # ДОБАВЛЯЕМ ПРЕФИКС
-        
+        user_id = f"user_{update.effective_user.id}"
         # Проверяем, есть ли данные от веб-приложения
         if not hasattr(update.effective_message, 'web_app_data') or not update.effective_message.web_app_data:
             logger.info("Нет данных от веб-приложения")
             return
-            
         # Извлекаем JSON-строку, присланную из Web App
         data = update.effective_message.web_app_data.data
         logger.info(f"Получены данные от веб-приложения: {data}")
-        # Преобразуем строку обратно в объект Python
         response_data = json.loads(data)
-        
         # Обновляем локальные данные пользователя на основе полученных данных
         progress_list = response_data.get('progress', [])
         user_data = await load_user_data(user_id)
@@ -431,17 +288,14 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
             progress = item.get('progress', 0)
             known = item.get('known', False)
             is_error = item.get('is_error', False)
-            # Обновляем локальные структуры
             user_data["word_scores"][word] = progress
             if known and word not in user_data["known_words"]:
                 user_data["known_words"].append(word)
             if is_error and word not in user_data["incorrect_words"]:
                 user_data["incorrect_words"].append(word)
-        # Сохраняем обновленные данные и синхронизируем с Supabase
+        # Сохраняем обновленные данные
         await save_user_data(user_id, user_data)
-        logger.info(f"Прогресс пользователя {user_id} успешно синхронизирован")
-        
-        # Отправляем подтверждение пользователю о получении данных
+        logger.info(f"Прогресс пользователя {user_id} успешно обновлен")
         await update.message.reply_text("Данные успешно синхронизированы! ✅")
     except json.JSONDecodeError as e:
         logger.error(f"Ошибка при декодировании данных от веб-приложения: {e}")
@@ -450,134 +304,6 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"Ошибка при обработке данных веб-приложения: {e}")
         await update.message.reply_text("Произошла ошибка при сохранении данных. ❌")
 
-# Обработчик команды /debug_sync (диагностика синхронизации)
-async def debug_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Проверяет синхронизацию данных пользователя"""
-    user_id = f"user_{update.effective_user.id}"  # ДОБАВЛЯЕМ ПРЕФИКС
-    
-    try:
-        # Проверяем данные в Supabase
-        supabase_data = await load_progress_from_supabase(user_id)
-        
-        # Проверяем локальные данные
-        user_data = await load_user_data(user_id)
-        
-        message = f"🔍 Диагностика синхронизации для пользователя {user_id}:\n\n"
-        message += f"💾 Локально: {len(user_data.get('word_scores', {}))} слов\n"
-        message += f"✅ Выучено: {len(user_data.get('known_words', []))} слов\n"
-        message += f"❌ С ошибками: {len(user_data.get('incorrect_words', []))} слов\n\n"
-        message += f"📊 В Supabase: {len(supabase_data)} записей\n"
-        supabase_words = set(item['word'] for item in supabase_data)
-        local_words = set(user_data.get('word_scores', {}).keys())
-        missing_in_supabase = local_words - supabase_words
-        missing_locally = supabase_words - local_words
-        if missing_in_supabase:
-            message += f"🔄 Не синхронизировано в Supabase: {len(missing_in_supabase)} слов\n"
-            # Добавляем недостающие слова в Supabase
-            for word in missing_in_supabase:
-                success = await sync_progress_to_supabase(
-                    user_id,
-                    word,
-                    user_data["word_scores"].get(word, 0),
-                    word in user_data.get("known_words", []),
-                    word in user_data.get("incorrect_words", [])
-                )
-            # После попытки синхронизации, обновляем данные Supabase
-            supabase_data = await load_progress_from_supabase(user_id)
-        if missing_locally:
-            message += f"⚠️ В Supabase есть несинхронизированные локально слова: {len(missing_locally)}\n"
-        message += "\n✅ Синхронизация проверена."
-        await update.message.reply_text(message)
-    except Exception as e:
-        logger.error(f"Ошибка при диагностике: {e}")
-        await update.message.reply_text("❌ Произошла ошибка при проверке синхронизации.")
-
-# Обработчик команды /force_sync (принудительная синхронизация)
-async def force_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Принудительно синхронизирует данные пользователя"""
-    user_id = f"user_{update.effective_user.id}"  # ДОБАВЛЯЕМ ПРЕФИКС
-    
-    try:
-        await update.message.reply_text("🔄 Начинаем принудительную синхронизацию...")
-        
-        # Загружаем данные пользователя
-        user_data = await load_user_data(user_id)
-        
-        # Синхронизируем все слова
-        synced_count = 0
-        for word, progress in user_data.get("word_scores", {}).items():
-            success = await sync_progress_to_supabase(
-                user_id,
-                word,
-                progress,
-                word in user_data.get("known_words", []),
-                word in user_data.get("incorrect_words", [])
-            )
-            if success:
-                synced_count += 1
-            await asyncio.sleep(0.1)  # Небольшая пауза между запросами
-        
-        # Загружаем данные из Supabase для проверки
-        supabase_data = await load_progress_from_supabase(user_id)
-        
-        await update.message.reply_text(
-            f"✅ Синхронизация завершена!\n\n"
-            f"🔄 Синхронизировано: {synced_count} слов\n"
-            f"📊 В базе данных: {len(supabase_data)} записей\n"
-            f"✅ Выучено: {len(user_data.get('known_words', []))} слов\n"
-            f"❌ С ошибками: {len(user_data.get('incorrect_words', []))} слов"
-        )
-    except Exception as e:
-        logger.error(f"Ошибка при принудительной синхронизации: {e}")
-        await update.message.reply_text(f"❌ Ошибка при синхронизации: {str(e)}")
-
-# Принудительная синхронизация данных пользователя (для внутреннего использования, напр. периодически)
-async def force_sync_user_data(user_id):
-    """Принудительная синхронизация данных пользователя"""
-    try:
-        # Загружаем данные пользователя
-        user_data = await load_user_data(user_id)
-        
-        # Синхронизируем все слова
-        all_success = True
-        for word, progress in user_data.get("word_scores", {}).items():
-            success = await sync_progress_to_supabase(
-                user_id,
-                word,
-                progress,
-                word in user_data.get("known_words", []),
-                word in user_data.get("incorrect_words", [])
-            )
-            if not success:
-                all_success = False
-        if all_success:
-            logger.info(f"Принудительная синхронизация пользователя {user_id} завершена")
-        else:
-            logger.warning(f"Принудительная синхронизация пользователя {user_id} выполнена не полностью")
-        return all_success
-    except Exception as e:
-        logger.error(f"Ошибка при принудительной синхронизации: {e}")
-        return False
-
-# Периодическая синхронизация всех пользователей
-async def periodic_sync(application):
-    """Периодическая синхронизация всех пользователей"""
-    while True:
-        try:
-            # Получаем список всех пользователей из локальных файлов
-            import glob
-            user_files = glob.glob('user_data_user_*.json')  # ИЗМЕНЯЕМ ПАТТЕРН
-            
-            for file in user_files:
-                user_id = file.replace('user_data_', '').replace('.json', '')
-                await force_sync_user_data(user_id)
-            
-            # Ждем 5 минут до следующей синхронизации
-            await asyncio.sleep(300)
-            
-        except Exception as e:
-            logger.error(f"Ошибка при периодической синхронизации: {e}")
-            await asyncio.sleep(60)  # В случае ошибки ждем минуту
 
 # Обработчик текстовых сообщений (для прочего текста, не команд)
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -592,8 +318,6 @@ async def set_bot_commands(application: Application):
         ("start", "Запустить/перезапустить бота"),
         ("app", "Открыть веб-приложение"),
         ("stats", "Показать статистику"),
-        ("debug_sync", "Диагностика синхронизации"),
-        ("force_sync", "Принудительная синхронизация")
     ]
     try:
         await application.bot.set_my_commands(commands)
@@ -603,46 +327,37 @@ async def set_bot_commands(application: Application):
 
 def main():
     """Запуск бота"""
-    # ДОБАВЛЯЕМ ДЕБАГ ЛОГИРОВАНИЕ
     logging.getLogger().setLevel(logging.DEBUG)
-    
-    # Получаем токен из .env
     token = os.getenv("BOT_TOKEN")
     if not token:
         logger.error("BOT_TOKEN не найден в переменных окружения!")
         return
-    
     logger.info(f"Запуск бота с токеном: {token[:10]}...")
-    
-    # Создаем приложение
     application = Application.builder().token(token).build()
-    
-    # Инициализируем Supabase таблицы (синхронно)
-    if not init_supabase_tables():
-        logger.warning("Не удалось инициализировать таблицы Supabase, бот будет работать без базы данных")
-    
-    # Устанавливаем команды бота
     loop = asyncio.get_event_loop()
     loop.run_until_complete(set_bot_commands(application))
-    
-    # Регистрируем обработчики
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("app", start_web_app))
     application.add_handler(CommandHandler("stats", show_statistics))
-    application.add_handler(CommandHandler("debug_sync", debug_sync))
-    application.add_handler(CommandHandler("force_sync", force_sync))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
-    
-    # Запускаем периодическую синхронизацию в фоне
-    loop.create_task(periodic_sync(application))
-    
-    # Запускаем бота
     logger.info("Запуск бота...")
     try:
         application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {e}")
+
+# === Firebase backup ===
+async def backup_to_firebase(user_id, user_data):
+    try:
+        doc_ref = db.collection("user_progress").document(user_id)
+        doc_ref.set({
+            "data": user_data,
+            "timestamp": firestore.SERVER_TIMESTAMP
+        })
+        logger.info(f"Данные пользователя {user_id} успешно сохранены в Firebase.")
+    except Exception as e:
+        logger.error(f"Ошибка при резервном копировании в Firebase: {e}")
 
 if __name__ == "__main__":
     main()
