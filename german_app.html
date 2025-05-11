@@ -336,17 +336,15 @@
     const { createClient } = supabase;
     const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // ИСПРАВЛЕННЫЙ: Получить userId из Telegram WebApp или сгенерировать временный
+    // Получить userId из Telegram WebApp или сгенерировать временный
     let userId = null;
     if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
-        // ИСПРАВЛЕНИЕ: Используем тот же формат, что и в боте
-        userId = `user_${tg.initDataUnsafe.user.id}`;
+        userId = tg.initDataUnsafe.user.id; // Без префикса 'user_'
     } else {
-        userId = localStorage.getItem('dzhus_userid') || ('user_' + Math.random().toString(36).substr(2, 9));
+        userId = localStorage.getItem('dzhus_userid') || Math.random().toString(36).substr(2, 9);
         localStorage.setItem('dzhus_userid', userId);
     }
 
-    // ДОБАВЛЕНО: Логирование user ID для отладки
     console.log('Current user ID:', userId);
     console.log('Telegram WebApp data:', tg.initDataUnsafe);
 
@@ -356,7 +354,7 @@
             console.log('Saving progress:', { userId, word, progress, known, isError });
             
             const progressData = {
-                user_id: userId,
+                user_id: userId, // Без добавления префикса
                 word: word,
                 progress: progress,
                 known: known,
@@ -406,13 +404,26 @@
 
     // --- Функция синхронизации с ботом ---
     async function syncWithBot(progressData) {
-        if (tg.sendData) {
-            const syncData = {
-                type: 'progress_sync',
-                progress: progressData
-            };
-            console.log('Syncing with bot:', syncData);
-            tg.sendData(JSON.stringify(syncData));
+        try {
+            if (tg && tg.sendData) {
+                const syncData = {
+                    type: 'progress_sync',
+                    progress: progressData
+                };
+                console.log('Syncing with bot:', syncData);
+                tg.sendData(JSON.stringify(syncData));
+                
+                // Ждем немного для обработки бота
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                return true;
+            } else {
+                console.log('Telegram WebApp sendData not available');
+                return false;
+            }
+        } catch (error) {
+            console.error('Ошибка при синхронизации с ботом:', error);
+            return false;
         }
     }
 
@@ -566,14 +577,28 @@
         clearInterval(timerInterval);
         const selected = e.target;
         const isCorrect = selected.dataset.correct === 'true';
-        const currentWord = words.find(w => w.word === document.getElementById('current-word').textContent);
+        const currentWordText = document.getElementById('current-word').textContent;
+        const currentWord = words.find(w => w.word === currentWordText);
         
-        console.log('Option clicked:', { word: currentWord.word, isCorrect, userId });
+        if (!currentWord) {
+            console.error('Current word not found');
+            return;
+        }
+        
+        console.log('Option clicked:', { 
+            word: currentWord.word, 
+            isCorrect, 
+            currentProgress: currentWord.progress,
+            userId 
+        });
         
         if (isCorrect) {
             selected.classList.add('correct');
             const earnedPoints = Math.floor(timeLeft * 10);
+            const oldProgress = currentWord.progress;
             currentWord.progress += earnedPoints;
+            
+            console.log(`Progress updated: ${oldProgress} -> ${currentWord.progress}`);
             
             document.getElementById('word-progress').textContent = currentWord.progress;
             document.getElementById('progress-bar').style.width = (currentWord.progress / 500 * 100) + '%';
@@ -582,24 +607,17 @@
             const isKnown = currentWord.progress >= 500;
             if (isKnown && !knownWords.some(w => w.word === currentWord.word)) {
                 knownWords.push({word: currentWord.word, progress: currentWord.progress});
+                console.log('Word added to known words:', currentWord.word);
             }
             
             // Сохраняем прогресс в Supabase
-            console.log('Attempting to save correct answer...');
-            await saveProgress(userId, currentWord.word, currentWord.progress, isKnown, false);
+            const saveSuccess = await saveProgress(userId, currentWord.word, currentWord.progress, isKnown, false);
+            console.log('Save to Supabase result:', saveSuccess);
             
             // Синхронизируем с ботом
             const progressData = collectProgressData();
-            await syncWithBot(progressData);
-            
-            // Проверка, все ли слова выучены
-            const remainingWords = words.filter(w => w.progress < 500);
-            if (remainingWords.length === 0) {
-                document.getElementById('result-title').textContent = 'Поздравляем!';
-                document.getElementById('result-message').textContent = 'Вы выучили все слова!';
-                document.getElementById('result-modal').classList.add('show');
-                return;
-            }
+            const syncSuccess = await syncWithBot(progressData);
+            console.log('Sync with bot result:', syncSuccess);
             
             document.getElementById('result-title').textContent = 'Правильно!';
             document.getElementById('result-message').textContent = `Вы получили ${earnedPoints} баллов. Общий прогресс: ${currentWord.progress}/500`;
@@ -612,15 +630,17 @@
             // Добавить в ошибки если нет
             if (!errorWords.some(w => w.word === currentWord.word)) {
                 errorWords.push({word: currentWord.word, progress: currentWord.progress});
+                console.log('Word added to error words:', currentWord.word);
             }
             
             // Сохраняем прогресс с флагом ошибки
-            console.log('Attempting to save incorrect answer...');
-            await saveProgress(userId, currentWord.word, currentWord.progress, false, true);
+            const saveSuccess = await saveProgress(userId, currentWord.word, currentWord.progress, false, true);
+            console.log('Save error to Supabase result:', saveSuccess);
             
             // Синхронизируем с ботом
             const progressData = collectProgressData();
-            await syncWithBot(progressData);
+            const syncSuccess = await syncWithBot(progressData);
+            console.log('Sync error with bot result:', syncSuccess);
             
             document.getElementById('result-title').textContent = 'Неправильно';
             document.getElementById('result-message').textContent = `Правильный ответ: ${currentWord.translation}`;
@@ -631,8 +651,8 @@
             btn.style.pointerEvents = 'none';
         });
 
-        // Убираем модальное окно
-        setTimeout(goToNextWord, 1000);  // Переход к следующему слову через 1 секунду
+        // Убираем модальное окно через секунду
+        setTimeout(goToNextWord, 1000);
     }
 
     function resetTimer() {
@@ -785,6 +805,42 @@
         if (screenId === 'learn-screen') showCurrentWord();
     }
 
+    // Добавляем функцию для принудительной синхронизации
+    async function forceSyncAll() {
+        console.log('Force syncing all data...');
+        document.getElementById('sync-overlay').style.display = 'flex';
+        document.getElementById('sync-overlay').textContent = 'Синхронизация данных...';
+        
+        try {
+            // Собираем все данные о прогрессе
+            const progressData = collectProgressData();
+            
+            // Сохраняем все в Supabase
+            for (const item of progressData) {
+                await saveProgress(userId, item.word, item.progress, item.known, item.is_error);
+                // Небольшая пауза между сохранениями для избежания перегрузки
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            // Синхронизируем с ботом
+            const syncSuccess = await syncWithBot(progressData);
+            
+            if (syncSuccess) {
+                document.getElementById('sync-overlay').textContent = 'Синхронизация завершена!';
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            } else {
+                document.getElementById('sync-overlay').textContent = 'Данные сохранены локально';
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        } catch (error) {
+            console.error('Ошибка при принудительной синхронизации:', error);
+            document.getElementById('sync-overlay').textContent = 'Ошибка синхронизации';
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        } finally {
+            document.getElementById('sync-overlay').style.display = 'none';
+        }
+    }
+
     // --- Добавляем обработчик события при закрытии приложения ---
     window.addEventListener('beforeunload', async () => {
         // Сохраняем все данные перед закрытием
@@ -809,8 +865,26 @@
         document.getElementById('back-button-errors').onclick = () => switchScreen('learn-screen');
         document.getElementById('back-button-stats').onclick = () => switchScreen('learn-screen');
         
-        // Меню и статистика в learn-screen
-        document.getElementById('menu-button').onclick = () => alert('Меню пока не реализовано');
+        // Меню
+        document.getElementById('menu-button').onclick = function() {
+            const menuOptions = [
+                'Статистика',
+                'Синхронизировать данные',
+                'Настройки (скоро)',
+                'Отмена'
+            ];
+            
+            // Создаем простое меню через alert (можно улучшить в будущем)
+            const choice = prompt('Выберите действие:\n' + menuOptions.map((opt, idx) => `${idx + 1}. ${opt}`).join('\n'));
+            
+            if (choice === '1') {
+                switchScreen('stats-screen');
+            } else if (choice === '2') {
+                forceSyncAll();
+            }
+        };
+        
+        // Статистика
         document.getElementById('stats-button').onclick = () => switchScreen('stats-screen');
         
         // Кнопка "Я знаю это слово"
@@ -865,6 +939,16 @@
             await syncWithBot(progressData);
         });
     }
+
+    // Автоматическая синхронизация каждые 30 секунд
+    setInterval(async () => {
+        if (document.visibilityState === 'visible') {
+            const progressData = collectProgressData();
+            if (progressData.length > 0) {
+                await syncWithBot(progressData);
+            }
+        }
+    }, 30000);
     </script>
 </body>
 </html>

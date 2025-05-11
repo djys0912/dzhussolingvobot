@@ -480,50 +480,212 @@ async def show_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
-# Обработчик данных от веб-приложения
+# Исправленный обработчик данных от веб-приложения
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает данные, полученные из веб-приложения"""
     try:
         user_id = update.effective_user.id
         
         # Проверяем, есть ли данные от веб-приложения
+        if not hasattr(update.effective_message, 'web_app_data') or not update.effective_message.web_app_data:
+            logger.info("Нет данных от веб-приложения")
+            return
+            
         web_app_data = update.effective_message.web_app_data
-        if web_app_data:
-            data = json.loads(web_app_data.data)
+        data = json.loads(web_app_data.data)
+        
+        logger.info(f"Получены данные от веб-приложения: {data}")
+        
+        # Обрабатываем синхронизацию прогресса
+        if data.get('type') == 'progress_sync':
+            progress_data = data.get('progress', [])
             
-            # Обрабатываем синхронизацию прогресса
-            if data.get('type') == 'progress_sync':
-                progress_data = data.get('progress', [])
+            # Загружаем текущие данные пользователя
+            user_data = await load_user_data(user_id)
+            
+            # Синхронизируем каждое слово
+            for item in progress_data:
+                word = item.get('word')
+                progress = item.get('progress', 0)
+                known = item.get('known', False)
+                is_error = item.get('is_error', False)
                 
-                for item in progress_data:
-                    word = item.get('word')
-                    progress = item.get('progress', 0)
-                    known = item.get('known', False)
-                    is_error = item.get('is_error', False)
+                if word:
+                    # Обновляем локальные данные
+                    user_data["word_scores"][word] = progress
                     
-                    if word:
-                        await sync_progress_to_supabase(
-                            user_id,
-                            word,
-                            progress,
-                            known,
-                            is_error
-                        )
-                
-                await update.message.reply_text("Прогресс успешно синхронизирован! ✅")
+                    if known and word not in user_data["known_words"]:
+                        user_data["known_words"].append(word)
+                    
+                    if is_error and word not in user_data["incorrect_words"]:
+                        user_data["incorrect_words"].append(word)
+                    
+                    # Сохраняем в Supabase
+                    await sync_progress_to_supabase(
+                        user_id,
+                        word,
+                        progress,
+                        known,
+                        is_error
+                    )
             
-            elif data.get('type') == 'request_progress':
-                # Веб-приложение запрашивает текущий прогресс
-                user_data = await load_user_data(user_id)
-                
-                # Отправляем прогресс обратно в веб-приложение (можно через постбэк)
-                # (здесь должна быть логика для отправки данных в веб-приложение)
-                pass
-                
-    except json.JSONDecodeError:
-        logger.error("Ошибка при декодировании данных от веб-приложения")
+            # Сохраняем обновленные данные
+            await save_user_data(user_id, user_data)
+            
+            # Отправляем подтверждение пользователю
+            await update.message.reply_text("✅ Прогресс успешно синхронизирован!")
+            logger.info(f"Прогресс пользователя {user_id} успешно синхронизирован")
+        
+        elif data.get('type') == 'request_progress':
+            # Веб-приложение запрашивает текущий прогресс
+            user_data = await load_user_data(user_id)
+            
+            # Формируем данные для отправки
+            response_data = {
+                'type': 'progress_response',
+                'progress': []
+            }
+            
+            for word, progress in user_data["word_scores"].items():
+                response_data['progress'].append({
+                    'word': word,
+                    'progress': progress,
+                    'known': word in user_data["known_words"],
+                    'is_error': word in user_data["incorrect_words"]
+                })
+            
+            # Можно отправить ответ через главную кнопку (если нужно)
+            logger.info(f"Отправка прогресса пользователю {user_id}: {len(response_data['progress'])} слов")
+            
+    except json.JSONDecodeError as e:
+        logger.error(f"Ошибка при декодировании данных от веб-приложения: {e}")
+        await update.message.reply_text("❌ Ошибка при обработке данных")
     except Exception as e:
         logger.error(f"Ошибка при обработке данных веб-приложения: {e}")
+        await update.message.reply_text("❌ Произошла ошибка при синхронизации")
+
+# Команда для проверки синхронизации
+async def debug_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Проверяет синхронизацию данных пользователя"""
+    user_id = update.effective_user.id
+    
+    try:
+        # Проверяем данные в Supabase
+        supabase_data = await load_progress_from_supabase(user_id)
+        
+        # Проверяем локальные данные
+        user_data = await load_user_data(user_id)
+        
+        # Выводим статистику
+        message = f"🔍 Диагностика синхронизации для пользователя {user_id}:\n\n"
+        message += f"📊 В Supabase: {len(supabase_data)} записей\n"
+        message += f"💾 Локально: {len(user_data.get('word_scores', {}))} слов\n"
+        message += f"✅ Выучено: {len(user_data.get('known_words', []))} слов\n"
+        message += f"❌ С ошибками: {len(user_data.get('incorrect_words', []))} слов\n\n"
+        
+        # Проверяем расхождения
+        local_words = set(user_data.get('word_scores', {}).keys())
+        supabase_words = set(item['word'] for item in supabase_data)
+        
+        missing_in_supabase = local_words - supabase_words
+        missing_locally = supabase_words - local_words
+        
+        if missing_in_supabase:
+            message += f"🔄 Не синхронизировано в Supabase: {len(missing_in_supabase)} слов\n"
+        
+        if missing_locally:
+            message += f"📥 Не найдено локально: {len(missing_locally)} слов\n"
+        
+        message += "\n/force_sync - принудительная синхронизация"
+        
+        await update.message.reply_text(message)
+        
+    except Exception as e:
+        logger.error(f"Ошибка при диагностике: {e}")
+        await update.message.reply_text(f"❌ Ошибка при диагностике: {str(e)}")
+
+# Команда для принудительной синхронизации
+async def force_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Принудительно синхронизирует данные пользователя"""
+    user_id = update.effective_user.id
+    
+    try:
+        await update.message.reply_text("🔄 Начинаем принудительную синхронизацию...")
+        
+        # Загружаем данные пользователя
+        user_data = await load_user_data(user_id)
+        
+        # Синхронизируем все слова
+        synced_count = 0
+        for word, progress in user_data.get("word_scores", {}).items():
+            success = await sync_progress_to_supabase(
+                user_id,
+                word,
+                progress,
+                word in user_data.get("known_words", []),
+                word in user_data.get("incorrect_words", [])
+            )
+            if success:
+                synced_count += 1
+            await asyncio.sleep(0.1)  # Небольшая пауза между запросами
+        
+        # Загружаем данные из Supabase для проверки
+        supabase_data = await load_progress_from_supabase(user_id)
+        
+        await update.message.reply_text(
+            f"✅ Синхронизация завершена!\n\n"
+            f"🔄 Синхронизировано: {synced_count} слов\n"
+            f"📊 В базе данных: {len(supabase_data)} записей\n"
+            f"✅ Выучено: {len(user_data.get('known_words', []))} слов\n"
+            f"❌ С ошибками: {len(user_data.get('incorrect_words', []))} слов"
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка при принудительной синхронизации: {e}")
+        await update.message.reply_text(f"❌ Ошибка при синхронизации: {str(e)}")
+
+# Принудительная синхронизация данных пользователя
+async def force_sync_user_data(user_id):
+    """Принудительная синхронизация данных пользователя"""
+    try:
+        # Загружаем данные пользователя
+        user_data = await load_user_data(user_id)
+        
+        # Синхронизируем все слова
+        for word, progress in user_data.get("word_scores", {}).items():
+            await sync_progress_to_supabase(
+                user_id,
+                word,
+                progress,
+                word in user_data.get("known_words", []),
+                word in user_data.get("incorrect_words", [])
+            )
+        
+        logger.info(f"Принудительная синхронизация пользователя {user_id} завершена")
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка при принудительной синхронизации: {e}")
+        return False
+
+# Периодическая синхронизация всех пользователей
+async def periodic_sync(application):
+    """Периодическая синхронизация всех пользователей"""
+    while True:
+        try:
+            # Получаем список всех пользователей из локальных файлов
+            import glob
+            user_files = glob.glob('user_data_*.json')
+            
+            for file in user_files:
+                user_id = file.replace('user_data_', '').replace('.json', '')
+                await force_sync_user_data(user_id)
+            
+            # Ждем 5 минут до следующей синхронизации
+            await asyncio.sleep(300)
+            
+        except Exception as e:
+            logger.error(f"Ошибка при периодической синхронизации: {e}")
+            await asyncio.sleep(60)  # В случае ошибки ждем минуту
 
 # Обработчик текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -553,7 +715,9 @@ async def set_bot_commands(application):
     commands = [
         ("start", "Начать работу с ботом"),
         ("app", "Открыть веб-приложение"),
-        ("stats", "Показать статистику")
+        ("stats", "Показать статистику"),
+        ("debug_sync", "Проверить синхронизацию"),
+        ("force_sync", "Принудительная синхронизация")
     ]
     
     try:
@@ -589,8 +753,13 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("app", start_web_app))
     application.add_handler(CommandHandler("stats", show_statistics))
+    application.add_handler(CommandHandler("debug_sync", debug_sync))
+    application.add_handler(CommandHandler("force_sync", force_sync))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
+    
+    # Запускаем периодическую синхронизацию в фоне
+    loop.create_task(periodic_sync(application))
     
     # Запускаем бота
     logger.info("Запуск бота...")
@@ -601,3 +770,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+        
+      
