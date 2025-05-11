@@ -336,10 +336,11 @@
     const { createClient } = supabase;
     const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // Получить userId из Telegram WebApp или сгенерировать временный
+    // ИСПРАВЛЕННЫЙ: Получить userId из Telegram WebApp или сгенерировать временный
     let userId = null;
     if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
-        userId = tg.initDataUnsafe.user.id.toString();
+        // ИСПРАВЛЕНИЕ: Используем тот же формат, что и в боте
+        userId = `user_${tg.initDataUnsafe.user.id}`;
     } else {
         userId = localStorage.getItem('dzhus_userid') || ('user_' + Math.random().toString(36).substr(2, 9));
         localStorage.setItem('dzhus_userid', userId);
