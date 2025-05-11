@@ -345,9 +345,15 @@
         localStorage.setItem('dzhus_userid', userId);
     }
 
+    // ДОБАВЛЕНО: Логирование user ID для отладки
+    console.log('Current user ID:', userId);
+    console.log('Telegram WebApp data:', tg.initDataUnsafe);
+
     // --- Функция сохранения прогресса в Supabase ---
     async function saveProgress(userId, word, progress, known = false, isError = false) {
         try {
+            console.log('Saving progress:', { userId, word, progress, known, isError });
+            
             const progressData = {
                 user_id: userId,
                 word: word,
@@ -365,7 +371,7 @@
                 console.error('Ошибка при сохранении прогресса:', error);
                 return false;
             } else {
-                console.log('Прогресс сохранен:', data);
+                console.log('Прогресс успешно сохранен:', data);
                 return true;
             }
         } catch (err) {
@@ -377,6 +383,8 @@
     // --- Функция загрузки прогресса из Supabase ---
     async function loadProgress(userId) {
         try {
+            console.log('Loading progress for user:', userId);
+            
             const { data, error } = await supabaseClient
                 .from('progress')
                 .select('*')
@@ -386,6 +394,8 @@
                 console.error('Ошибка при загрузке прогресса:', error);
                 return [];
             }
+            
+            console.log('Loaded progress:', data);
             return data || [];
         } catch (err) {
             console.error('Ошибка при загрузке прогресса:', err);
@@ -400,6 +410,7 @@
                 type: 'progress_sync',
                 progress: progressData
             };
+            console.log('Syncing with bot:', syncData);
             tg.sendData(JSON.stringify(syncData));
         }
     }
@@ -407,6 +418,8 @@
     // --- Функция загрузки всех данных при старте ---
     async function initializeApp() {
         try {
+            console.log('Initializing app for user:', userId);
+            
             // Показываем индикатор загрузки
             document.getElementById('sync-overlay').style.display = 'flex';
             
@@ -462,6 +475,8 @@
                 }
             }
         });
+        
+        console.log('Updated local data:', { knownWords, errorWords });
     }
 
     // --- Функция сбора текущего прогресса ---
@@ -479,6 +494,7 @@
             }
         });
         
+        console.log('Collected progress data:', progressData);
         return progressData;
     }
 
@@ -551,6 +567,8 @@
         const isCorrect = selected.dataset.correct === 'true';
         const currentWord = words.find(w => w.word === document.getElementById('current-word').textContent);
         
+        console.log('Option clicked:', { word: currentWord.word, isCorrect, userId });
+        
         if (isCorrect) {
             selected.classList.add('correct');
             const earnedPoints = Math.floor(timeLeft * 10);
@@ -566,6 +584,7 @@
             }
             
             // Сохраняем прогресс в Supabase
+            console.log('Attempting to save correct answer...');
             await saveProgress(userId, currentWord.word, currentWord.progress, isKnown, false);
             
             // Синхронизируем с ботом
@@ -595,6 +614,7 @@
             }
             
             // Сохраняем прогресс с флагом ошибки
+            console.log('Attempting to save incorrect answer...');
             await saveProgress(userId, currentWord.word, currentWord.progress, false, true);
             
             // Синхронизируем с ботом
@@ -639,6 +659,9 @@
     function showKnownWords() {
         const list = document.getElementById('known-words-list');
         list.innerHTML = '';
+        
+        console.log('Showing known words:', knownWords);
+        
         if (knownWords.length === 0) {
             const empty = document.createElement('div');
             empty.textContent = 'У вас пока нет выученных слов.';
@@ -673,6 +696,9 @@
     function showErrorWords() {
         const list = document.getElementById('error-words-list');
         list.innerHTML = '';
+        
+        console.log('Showing error words:', errorWords);
+        
         if (errorWords.length === 0) {
             const empty = document.createElement('div');
             empty.textContent = 'У вас нет слов с ошибками.';
@@ -795,6 +821,7 @@
                 knownWords.push({word: w.word, progress: w.progress});
                 
                 // Сохраняем прогресс в Supabase
+                console.log('Marking word as known:', w.word);
                 await saveProgress(userId, w.word, w.progress, true, false);
                 
                 // Синхронизируем с ботом
