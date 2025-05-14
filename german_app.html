@@ -121,7 +121,7 @@
         <div class="header">
             <button class="header-button" id="menu-button">Меню</button>
             <h1>Изучение слов</h1>
-            <button class="header-button" id="stats-button">Статистика</button>
+            <button class="header-button" id="sync-button">🔄</button>
         </div>
         
         <div class="container">
@@ -327,34 +327,75 @@
     let timerInterval;
     let timeLeft = 10;
 
-
     // Получить userId из Telegram WebApp или сгенерировать временный
     let userId = null;
     if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) {
         userId = 'user_' + tg.initDataUnsafe.user.id; // Добавлен префикс для соответствия формату в Supabase и боте
     } else {
-        userId = localStorage.getItem('dzhus_userid') || Math.random().toString(36).substr(2, 9);
+        userId = localStorage.getItem('dzhus_userid') || ('user_' + Math.random().toString(36).substr(2, 9));
         localStorage.setItem('dzhus_userid', userId);
     }
 
     console.log('Current user ID:', userId);
     console.log('Telegram WebApp data:', tg.initDataUnsafe);
 
-
-    // --- Функция синхронизации с Firebase ---
-    async function syncWithFirebase(progressData) {
+    // --- Улучшенная функция синхронизации с ботом ---
+    async function syncWithBot(progressData) {
         try {
+            // Логируем для отладки то, что мы отправляем
+            console.log("Синхронизируем с ботом, данные:", JSON.stringify({
+                type: 'progress_sync',
+                progress: progressData,
+                user_id: userId  // Добавляем user_id явно
+            }));
+            
             if (tg && tg.sendData) {
                 tg.sendData(JSON.stringify({
                     type: 'progress_sync',
-                    progress: progressData
+                    progress: progressData,
+                    user_id: userId  // Добавляем user_id явно
                 }));
+                
+                // Сохраняем резервную копию в localStorage
+                localStorage.setItem('progress_data', JSON.stringify(progressData));
+                localStorage.setItem('last_sync_time', new Date().toISOString());
+                
                 return true;
+            } else {
+                console.error("tg.sendData не доступен!");
+                return false;
             }
         } catch (e) {
-            console.error("Ошибка при отправке в Firebase:", e);
+            console.error("Ошибка при отправке данных:", e);
+            return false;
         }
-        return false;
+    }
+
+    // Функция принудительной синхронизации всех данных
+    async function forceSyncAll() {
+        try {
+            document.getElementById('sync-overlay').style.display = 'flex';
+            document.getElementById('sync-overlay').textContent = 'Синхронизация данных...';
+            
+            const progressData = collectProgressData();
+            const success = await syncWithBot(progressData);
+            
+            document.getElementById('sync-overlay').textContent = 
+                success ? 'Синхронизация успешна!' : 'Ошибка синхронизации!';
+            
+            setTimeout(() => {
+                document.getElementById('sync-overlay').style.display = 'none';
+            }, 1500);
+            
+            return success;
+        } catch (e) {
+            console.error("Ошибка принудительной синхронизации:", e);
+            document.getElementById('sync-overlay').textContent = 'Ошибка синхронизации!';
+            setTimeout(() => {
+                document.getElementById('sync-overlay').style.display = 'none';
+            }, 1500);
+            return false;
+        }
     }
 
     // --- Функция загрузки всех данных при старте ---
@@ -368,11 +409,17 @@
             // Загружаем слова
             await loadWords();
             
-            // Загружаем прогресс пользователя
-            const progressData = []; // Firebase загрузка позже
-            
-            // Обновляем локальные данные на основе загруженного прогресса
-            updateLocalDataFromProgress(progressData);
+            // Пробуем загрузить сохраненный прогресс из localStorage
+            const savedProgress = localStorage.getItem('progress_data');
+            if (savedProgress) {
+                try {
+                    const progressData = JSON.parse(savedProgress);
+                    console.log('Загружен прогресс из localStorage:', progressData);
+                    updateLocalDataFromProgress(progressData);
+                } catch (e) {
+                    console.error('Ошибка при загрузке прогресса из localStorage:', e);
+                }
+            }
             
             // Скрываем индикатор загрузки
             document.getElementById('sync-overlay').style.display = 'none';
@@ -383,7 +430,7 @@
             // Запускаем периодическую синхронизацию
             setInterval(async () => {
                 const currentProgress = collectProgressData();
-                await syncWithFirebase(currentProgress);
+                await syncWithBot(currentProgress);
             }, 60000); // Синхронизация каждые 60 секунд
             
         } catch (error) {
@@ -540,9 +587,9 @@
                 console.log('Word added to known words:', currentWord.word);
             }
             
-            // Синхронизируем с Firebase
+            // Синхронизируем с ботом
             const progressData = collectProgressData();
-            await syncWithFirebase(progressData);
+            await syncWithBot(progressData);
             
             document.getElementById('result-title').textContent = 'Правильно!';
             document.getElementById('result-message').textContent = `Вы получили ${earnedPoints} баллов. Общий прогресс: ${currentWord.progress}/500`;
@@ -558,9 +605,9 @@
                 console.log('Word added to error words:', currentWord.word);
             }
             
-            // Синхронизируем с Firebase
+            // Синхронизируем с ботом
             const progressData = collectProgressData();
-            await syncWithFirebase(progressData);
+            await syncWithBot(progressData);
             
             document.getElementById('result-title').textContent = 'Неправильно';
             document.getElementById('result-message').textContent = `Правильный ответ: ${currentWord.translation}`;
@@ -725,7 +772,20 @@
         if (screenId === 'learn-screen') showCurrentWord();
     }
 
-
+    // --- Добавляем обработчик события при закрытии приложения ---
+    window.addEventListener('beforeunload', async (event) => {
+        console.log('Закрытие приложения, сохраняем данные...');
+        // Сохраняем все данные перед закрытием
+        const progressData = collectProgressData();
+        localStorage.setItem('progress_data', JSON.stringify(progressData));
+        localStorage.setItem('last_sync_time', new Date().toISOString());
+        await syncWithBot(progressData);
+        
+        // Для некоторых браузеров может потребоваться задержка
+        // чтобы успеть отправить данные
+        event.preventDefault();
+        event.returnValue = '';
+    });
 
     // --- Обработчики событий ---
     document.addEventListener('DOMContentLoaded', async function() {
@@ -763,8 +823,8 @@
             }
         };
         
-        // Статистика
-        document.getElementById('stats-button').onclick = () => switchScreen('stats-screen');
+        // Кнопка синхронизации
+        document.getElementById('sync-button').onclick = forceSyncAll;
         
         // Кнопка "Я знаю это слово"
         document.getElementById('known-button').onclick = async function() {
@@ -773,9 +833,9 @@
             if (w && !knownWords.some(kw => kw.word === w.word)) {
                 w.progress = Math.max(w.progress, 500); // Уставляем прогресс 500 если меньше
                 knownWords.push({word: w.word, progress: w.progress});
-                // Синхронизируем с Firebase
+                // Синхронизируем с ботом
                 const progressData = collectProgressData();
-                await syncWithFirebase(progressData);
+                await syncWithBot(progressData);
             }
             goToNextWord();
         };
@@ -803,13 +863,13 @@
         tg.onEvent('mainButtonClicked', async () => {
             // Сохраняем прогресс при нажатии главной кнопки
             const progressData = collectProgressData();
-            await syncWithFirebase(progressData);
+            await syncWithBot(progressData);
         });
         
         tg.onEvent('backButtonClicked', async () => {
             // Сохраняем прогресс при нажатии кнопки назад
             const progressData = collectProgressData();
-            await syncWithFirebase(progressData);
+            await syncWithBot(progressData);
         });
     }
 
@@ -818,7 +878,7 @@
         if (document.visibilityState === 'visible') {
             const progressData = collectProgressData();
             if (progressData.length > 0) {
-                await syncWithFirebase(progressData);
+                await syncWithBot(progressData);
             }
         }
     }, 30000);
