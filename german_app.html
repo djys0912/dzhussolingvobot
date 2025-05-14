@@ -371,24 +371,6 @@
         }
     }
 
-    // --- Функция запроса данных из бота ---
-    async function requestProgressFromBot() {
-        try {
-            if (tg && tg.sendData) {
-                console.log("Запрашиваем данные из бота...");
-                tg.sendData(JSON.stringify({
-                    type: 'request_progress',
-                    user_id: userId
-                }));
-                return true;
-            }
-        } catch (e) {
-            console.error("Ошибка при запросе данных из бота:", e);
-            return false;
-        }
-        return false;
-    }
-
     // Функция принудительной синхронизации всех данных
     async function forceSyncAll() {
         try {
@@ -427,27 +409,20 @@
             // Загружаем слова
             await loadWords();
             
-            // Запрашиваем актуальные данные из бота
-            await requestProgressFromBot();
-            
-            // Ждем небольшую паузу для получения данных
-            setTimeout(async () => {
-                // Пробуем загрузить сохраненный прогресс из localStorage
-                const savedProgress = localStorage.getItem('progress_data');
-                if (savedProgress) {
-                    try {
-                        const progressData = JSON.parse(savedProgress);
-                        console.log('Загружен прогресс из localStorage:', progressData);
-                        updateLocalDataFromProgress(progressData);
-                        showCurrentWord();
-                    } catch (e) {
-                        console.error('Ошибка при загрузке прогресса из localStorage:', e);
-                    }
+            // Пробуем загрузить сохраненный прогресс из localStorage
+            const savedProgress = localStorage.getItem('progress_data');
+            if (savedProgress) {
+                try {
+                    const progressData = JSON.parse(savedProgress);
+                    console.log('Загружен прогресс из localStorage:', progressData);
+                    updateLocalDataFromProgress(progressData);
+                } catch (e) {
+                    console.error('Ошибка при загрузке прогресса из localStorage:', e);
                 }
-                
-                // Скрываем индикатор загрузки
-                document.getElementById('sync-overlay').style.display = 'none';
-            }, 1000);
+            }
+            
+            // Скрываем индикатор загрузки
+            document.getElementById('sync-overlay').style.display = 'none';
             
             // Инициализируем первое слово
             showCurrentWord();
