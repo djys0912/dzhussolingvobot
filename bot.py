@@ -71,13 +71,15 @@ logger.info(f"Firebase {'ВКЛЮЧЕН' if FIREBASE_ENABLED else 'ОТКЛЮЧ�
 
 async def load_user_data(user_id):
     """Загружает данные пользователя из локального файла или Firebase"""
+    logger.info(f"[DEBUG] Начало загрузки данных для {user_id}")
+    
     # Сначала пробуем загрузить локальные данные
     file_path = f'user_data_{user_id}.json'
     try:
         if os.path.exists(file_path):
             with open(file_path, 'r', encoding='utf-8') as file:
                 user_data = json.load(file)
-            logger.info(f"Загружены данные из локального файла для {user_id}.")
+            logger.info(f"[DEBUG] Загружены данные из локального файла для {user_id}: {user_data}")
         else:
             # Если локального файла нет, создаем пустую структуру данных
             user_data = {
@@ -87,9 +89,9 @@ async def load_user_data(user_id):
                 "current_words": [],
                 "current_word_index": 0
             }
-            logger.info(f"Создана новая структура данных для пользователя {user_id}.")
+            logger.info(f"[DEBUG] Создана новая структура данных для пользователя {user_id}")
     except Exception as e:
-        logger.error(f"Ошибка при загрузке данных из локального файла: {e}")
+        logger.error(f"[DEBUG] Ошибка при загрузке данных из локального файла: {e}")
         # Если возникла ошибка, создаем пустую структуру данных
         user_data = {
             "word_scores": {},
@@ -101,20 +103,27 @@ async def load_user_data(user_id):
     
     # Если Firebase отключен, просто возвращаем локальные данные
     if not FIREBASE_ENABLED:
-        logger.debug(f"Firebase отключен, используются только локальные данные для {user_id}")
+        logger.info(f"[DEBUG] Firebase отключен (FIREBASE_ENABLED={FIREBASE_ENABLED}), используются только локальные данные для {user_id}")
         return user_data
     
     # Пробуем загрузить данные из Firebase, если он доступен
     try:
+        logger.info(f"[DEBUG] Попытка загрузки данных из Firebase для {user_id}")
         doc = db.collection("user_progress").document(user_id).get()
+        logger.info(f"[DEBUG] Запрос к Firebase выполнен для {user_id}, документ существует: {doc.exists}")
         if doc.exists:
             firebase_data = doc.to_dict().get("data", {})
             if firebase_data:
-                logger.info(f"Загружены данные из Firebase для пользователя {user_id}")
+                logger.info(f"[DEBUG] Загружены данные из Firebase для {user_id}: {firebase_data}")
                 return firebase_data
+            else:
+                logger.info(f"[DEBUG] Документ существует, но поле 'data' пустое или отсутствует")
+        else:
+            logger.info(f"[DEBUG] Документ не существует в Firebase для {user_id}")
     except Exception as e:
-        logger.error(f"Ошибка при загрузке из Firebase: {e}")
+        logger.error(f"[DEBUG] Ошибка при загрузке из Firebase: {e}")
     
+    logger.info(f"[DEBUG] Возвращаем локальные данные для {user_id}, т.к. Firebase не вернул данные")
     return user_data
 
 
@@ -125,16 +134,17 @@ async def save_user_data(user_id, user_data):
         # Сохраняем локально
         with open(file_path, 'w', encoding='utf-8') as file:
             json.dump(user_data, file, ensure_ascii=False, indent=4)
-        logger.info(f"Данные пользователя {user_id} сохранены локально")
+        logger.info(f"[DEBUG] Данные сохранены локально для {user_id}: {user_data}")
         
         # Сохраняем в Firebase только если он доступен
         if FIREBASE_ENABLED:
             try:
-                await backup_to_firebase(user_id, user_data)
+                success = await backup_to_firebase(user_id, user_data)
+                logger.info(f"[DEBUG] Результат сохранения в Firebase для {user_id}: {success}")
             except Exception as e:
-                logger.error(f"Ошибка при резервном копировании в Firebase: {e}")
+                logger.error(f"[DEBUG] Ошибка при резервном копировании в Firebase: {e}")
     except Exception as e:
-        logger.error(f"Ошибка при сохранении данных пользователя {user_id}: {e}")
+        logger.error(f"[DEBUG] Ошибка при сохранении данных пользователя {user_id}: {e}")
 
 
 async def update_word_progress(user_id, word, points_earned, is_known=False, is_error=False):
@@ -600,19 +610,28 @@ async def set_bot_commands(application: Application):
 async def backup_to_firebase(user_id, user_data):
     """Создает резервную копию данных пользователя в Firebase"""
     if not FIREBASE_ENABLED:
-        logger.debug(f"Firebase отключен, резервное копирование пропущено для {user_id}")
+        logger.info(f"[DEBUG] Firebase отключен (FIREBASE_ENABLED={FIREBASE_ENABLED}), резервное копирование пропущено для {user_id}")
         return False
     
     try:
+        logger.info(f"[DEBUG] Попытка сохранения в Firebase для {user_id}, данные: {user_data}")
         doc_ref = db.collection("user_progress").document(user_id)
         doc_ref.set({
             "data": user_data,
             "timestamp": firestore.SERVER_TIMESTAMP
         })
-        logger.info(f"Данные пользователя {user_id} успешно сохранены в Firebase.")
+        logger.info(f"[DEBUG] Данные успешно сохранены в Firebase для {user_id}")
+        
+        # Проверка сохранения - сразу пытаемся прочитать
+        check_doc = doc_ref.get()
+        if check_doc.exists:
+            logger.info(f"[DEBUG] Проверка: документ существует после сохранения")
+        else:
+            logger.warning(f"[DEBUG] Проверка: документ НЕ существует после сохранения!")
+            
         return True
     except Exception as e:
-        logger.error(f"Ошибка при резервном копировании в Firebase: {e}")
+        logger.error(f"[DEBUG] Ошибка при резервном копировании в Firebase: {e}")
         return False
 
 
