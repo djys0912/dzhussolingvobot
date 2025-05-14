@@ -37,30 +37,36 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Инициализируем Firebase только если ключ найден
+FIREBASE_ENABLED = False
+db = None
+
 if firebase_key_path:
     try:
         cred = credentials.Certificate(firebase_key_path)
         firebase_admin.initialize_app(cred)
         db = firestore.client()
-        logger.info(f"Firebase успешно инициализирован с ключом из {firebase_key_path}")
         
         # Проверка подключения Firebase
         try:
+            # Тестовая запись для проверки соединения
             test_ref = db.collection("system").document("test")
-            test_ref.set({"timestamp": firestore.SERVER_TIMESTAMP, "status": "ok"})
-            logger.info("Firebase успешно подключен и работает!")
+            test_ref.set({
+                "timestamp": firestore.SERVER_TIMESTAMP,
+                "status": "ok",
+                "test": "Проверка соединения"
+            })
+            logger.info(f"Firebase успешно инициализирован и подключен!")
+            FIREBASE_ENABLED = True
         except Exception as e:
-            logger.error(f"Ошибка при тестировании Firebase: {e}")
+            logger.error(f"Ошибка при тестировании подключения к Firebase: {e}")
+            # Продолжаем работу без Firebase
     except Exception as e:
         logger.error(f"Ошибка при инициализации Firebase: {e}")
-        db = None
+        # Продолжаем работу без Firebase
 else:
     logger.warning("Файл ключа Firebase не найден. Firebase функции отключены.")
-    db = None
 
-# Функция-обертка для проверки доступности Firebase
-def is_firebase_available():
-    return db is not None
+logger.info(f"Firebase {'ВКЛЮЧЕН' if FIREBASE_ENABLED else 'ОТКЛЮЧЕН'} - бот будет работать с {'использованием Firebase' if FIREBASE_ENABLED else 'локальным хранилищем'}")
 
 
 async def load_user_data(user_id):
@@ -93,17 +99,21 @@ async def load_user_data(user_id):
             "current_word_index": 0
         }
     
-    # Попробуем загрузить резервную копию из Firebase, если он доступен
-    if is_firebase_available():
-        try:
-            doc = db.collection("user_progress").document(user_id).get()
-            if doc.exists:
-                firebase_data = doc.to_dict().get("data", {})
-                if firebase_data:
-                    logger.info(f"Загружены данные из Firebase для пользователя {user_id}")
-                    return firebase_data
-        except Exception as e:
-            logger.error(f"Ошибка при загрузке из Firebase: {e}")
+    # Если Firebase отключен, просто возвращаем локальные данные
+    if not FIREBASE_ENABLED:
+        logger.debug(f"Firebase отключен, используются только локальные данные для {user_id}")
+        return user_data
+    
+    # Пробуем загрузить данные из Firebase, если он доступен
+    try:
+        doc = db.collection("user_progress").document(user_id).get()
+        if doc.exists:
+            firebase_data = doc.to_dict().get("data", {})
+            if firebase_data:
+                logger.info(f"Загружены данные из Firebase для пользователя {user_id}")
+                return firebase_data
+    except Exception as e:
+        logger.error(f"Ошибка при загрузке из Firebase: {e}")
     
     return user_data
 
@@ -115,10 +125,14 @@ async def save_user_data(user_id, user_data):
         # Сохраняем локально
         with open(file_path, 'w', encoding='utf-8') as file:
             json.dump(user_data, file, ensure_ascii=False, indent=4)
+        logger.info(f"Данные пользователя {user_id} сохранены локально")
         
-        # Сохраняем резервную копию в Firebase
-        await backup_to_firebase(user_id, user_data)
-        logger.info(f"Данные пользователя {user_id} успешно сохранены локально и в Firebase")
+        # Сохраняем в Firebase только если он доступен
+        if FIREBASE_ENABLED:
+            try:
+                await backup_to_firebase(user_id, user_data)
+            except Exception as e:
+                logger.error(f"Ошибка при резервном копировании в Firebase: {e}")
     except Exception as e:
         logger.error(f"Ошибка при сохранении данных пользователя {user_id}: {e}")
 
@@ -585,8 +599,8 @@ async def set_bot_commands(application: Application):
 # === Firebase backup ===
 async def backup_to_firebase(user_id, user_data):
     """Создает резервную копию данных пользователя в Firebase"""
-    if not is_firebase_available():
-        logger.warning(f"Firebase недоступен, резервное копирование пропущено для {user_id}")
+    if not FIREBASE_ENABLED:
+        logger.debug(f"Firebase отключен, резервное копирование пропущено для {user_id}")
         return False
     
     try:
