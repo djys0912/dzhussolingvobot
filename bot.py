@@ -563,6 +563,22 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
         data = update.effective_message.web_app_data.data
         logger.info(f"Получены данные от веб-приложения: {data}")
         response_data = json.loads(data)
+        # Если это запрос на получение прогресса (обратная синхронизация)
+        if response_data.get('type') == 'get_progress':
+            user_data = await load_user_data(user_id)
+            progress = []
+            # Преобразуем user_data к формату, который понимает WebApp
+            for word, prog in user_data.get('word_scores', {}).items():
+                progress.append({
+                    'word': word,
+                    'progress': prog,
+                    'known': word in user_data.get('known_words', []),
+                    'is_error': word in user_data.get('incorrect_words', [])
+                })
+            # Отправляем прогресс обратно как сообщение
+            await update.message.reply_text(f'PROGRESS_DATA::{json.dumps(progress)}')
+            logger.info(f"Отправлен прогресс пользователю {user_id} по запросу get_progress")
+            return
         # Обновляем локальные данные пользователя на основе полученных данных
         progress_list = response_data.get('progress', [])
         user_data = await load_user_data(user_id)
