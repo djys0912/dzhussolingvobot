@@ -316,6 +316,24 @@
     <script>
     // --- Telegram WebApp и тема ---
     let tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : {colorScheme:'light',expand:()=>{},sendData:()=>{}};
+
+    // Добавляем обработчик входящих сообщений от бота для получения прогресса
+    if (tg && tg.onEvent) {
+        tg.onEvent('message', (msg) => {
+            if (msg && typeof msg === 'string' && msg.startsWith('PROGRESS_DATA::')) {
+                try {
+                    const progress = JSON.parse(msg.replace('PROGRESS_DATA::', ''));
+                    updateLocalDataFromProgress(progress);
+                    localStorage.setItem('progress_data', JSON.stringify(progress));
+                    showCurrentWord();
+                    updateStatistics();
+                    console.log('Прогресс успешно загружен с сервера!');
+                } catch(e) {
+                    console.error('Ошибка при разборе данных прогресса:', e);
+                }
+            }
+        });
+    }
     tg.expand && tg.expand();
     if (tg.colorScheme === 'dark') document.body.classList.add('dark-theme');
 
@@ -419,6 +437,11 @@
                 } catch (e) {
                     console.error('Ошибка при загрузке прогресса из localStorage:', e);
                 }
+            }
+
+            // После успешного определения userId и загрузки слов — запрашиваем прогресс с сервера
+            if (tg && tg.sendData) {
+                tg.sendData(JSON.stringify({type: 'get_progress', user_id: userId}));
             }
             
             // Скрываем индикатор загрузки
