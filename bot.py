@@ -10,7 +10,11 @@ import random
 import asyncio
 from datetime import datetime
 import requests
-
+def is_web_app_data(update: Update):
+    return (
+        hasattr(update.effective_message, 'web_app_data') and
+        update.effective_message.web_app_data is not None
+    )
 # === Firebase Admin SDK init ===
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -548,6 +552,7 @@ async def show_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Обработчик данных из веб-приложения
 async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает данные, полученные из веб-приложения"""
+    logger.info("handle_web_app_data TRIGGERED")
     try:
         user_id = f"user_{update.effective_user.id}"
         # Проверяем, есть ли данные от веб-приложения
@@ -651,11 +656,11 @@ def main():
     loop.run_until_complete(set_bot_commands(application))
     
     # Регистрируем обработчики
+    application.add_handler(MessageHandler(is_web_app_data, handle_web_app_data))
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("app", start_web_app))
     application.add_handler(CommandHandler("stats", show_statistics))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
     
     logger.info("Запуск бота...")
     try:
