@@ -115,9 +115,39 @@
     <div id="sync-overlay" class="sync-overlay">
         Синхронизация данных...
     </div>
-    
+
+    <!-- Главное меню с тренажёрами -->
+    <div id="main-menu" class="screen active" style="flex-direction:column;justify-content:flex-start;align-items:stretch;padding:0 0 0 0;">
+        <div style="background:linear-gradient(90deg,#6d5dd3,#ed5192);color:#fff;padding:32px 20px 22px 20px;border-radius:0 0 28px 28px;display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:28px;font-weight:700;">IchLerneDeutsch</span>
+            <span style="width:44px;height:44px;background:rgba(255,255,255,0.25);border-radius:50%;display:flex;align-items:center;justify-content:center;">
+                <span style="font-size:27px;">👤</span>
+            </span>
+        </div>
+        <div style="overflow-x:auto;padding:24px 0 12px 0;">
+            <div style="display:flex;gap:20px;padding-left:18px;">
+                <button class="trainer-btn" data-type="vocabulary" style="background:#fff;border:none;border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,0.08);min-width:98px;padding:17px 7px 8px 7px;display:flex;flex-direction:column;align-items:center;">
+                    <span style="font-size:33px;color:seagreen;">📖</span>
+                    <span style="margin-top:8px;font-size:15px;font-weight:500;color:#2d2d2d;">Wortschatz</span>
+                </button>
+                <button class="trainer-btn" data-type="article" style="background:#fff;border:none;border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,0.08);min-width:98px;padding:17px 7px 8px 7px;display:flex;flex-direction:column;align-items:center;">
+                    <span style="font-size:33px;color:#2f80ed;">💬</span>
+                    <span style="margin-top:8px;font-size:15px;font-weight:500;color:#2d2d2d;">Artikel</span>
+                </button>
+                <button class="trainer-btn" data-type="perfect" style="background:#fff;border:none;border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,0.08);min-width:98px;padding:17px 7px 8px 7px;display:flex;flex-direction:column;align-items:center;">
+                    <span style="font-size:33px;color:purple;">⏰</span>
+                    <span style="margin-top:8px;font-size:15px;font-weight:500;color:#2d2d2d;">Perfekt</span>
+                </button>
+                <button class="trainer-btn" data-type="praeteritum" style="background:#fff;border:none;border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,0.08);min-width:98px;padding:17px 7px 8px 7px;display:flex;flex-direction:column;align-items:center;">
+                    <span style="font-size:33px;color:orange;">📄</span>
+                    <span style="margin-top:8px;font-size:15px;font-weight:500;color:#2d2d2d;">Präteritum</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Экран изучения слов -->
-    <div id="learn-screen" class="screen active">
+    <div id="learn-screen" class="screen">
         <div class="header">
             <button class="header-button" id="menu-button">Меню</button>
             <h1>Изучение слов</h1>
@@ -795,6 +825,16 @@
         if (screenId === 'learn-screen') showCurrentWord();
     }
 
+    // Переключение экранов между меню и тренажёром
+    function showMenu() {
+        document.getElementById('main-menu').classList.add('active');
+        document.getElementById('learn-screen').classList.remove('active');
+    }
+    function showTrainerScreen() {
+        document.getElementById('main-menu').classList.remove('active');
+        document.getElementById('learn-screen').classList.add('active');
+    }
+
     // --- Добавляем обработчик события при закрытии приложения ---
     window.addEventListener('beforeunload', async (event) => {
         console.log('Закрытие приложения, сохраняем данные...');
@@ -814,41 +854,72 @@
     document.addEventListener('DOMContentLoaded', async function() {
         // Инициализируем приложение
         await initializeApp();
-        
+
+        // При запуске показываем меню, а не learn-screen
+        showMenu();
+
         // Табы
         document.querySelectorAll('.tab').forEach(tab => {
             tab.addEventListener('click', function() {
                 switchScreen(tab.dataset.screen);
             });
         });
-        
+
         // Кнопки Назад
         document.getElementById('back-button-known').onclick = () => switchScreen('learn-screen');
         document.getElementById('back-button-errors').onclick = () => switchScreen('learn-screen');
         document.getElementById('back-button-stats').onclick = () => switchScreen('learn-screen');
-        
-        // Меню
+
+        // Клик по кнопке "Меню" в хедере тренажёра возвращает на главное меню
         document.getElementById('menu-button').onclick = function() {
-            const menuOptions = [
-                'Статистика',
-                'Синхронизировать данные',
-                'Настройки (скоро)',
-                'Отмена'
-            ];
-            
-            // Создаем простое меню через alert (можно улучшить в будущем)
-            const choice = prompt('Выберите действие:\n' + menuOptions.map((opt, idx) => `${idx + 1}. ${opt}`).join('\n'));
-            
-            if (choice === '1') {
-                switchScreen('stats-screen');
-            } else if (choice === '2') {
-                forceSyncAll();
-            }
+            showMenu();
         };
-        
+
+        // Кнопки тренажёров на главном меню
+        document.querySelectorAll('.trainer-btn').forEach(btn => {
+            btn.onclick = async function() {
+                // Можно показать индикатор загрузки
+                document.getElementById('sync-overlay').style.display = 'flex';
+                document.getElementById('sync-overlay').textContent = 'Загружаем прогресс...';
+                if (tg && tg.sendData) {
+                    tg.sendData(JSON.stringify({type: 'get_progress', user_id: userId}));
+                }
+                // Ждем ответа или таймаут
+                let received = false;
+                if (tg && tg.onEvent) {
+                    let handler = (msg) => {
+                        if (msg && typeof msg === 'string' && msg.startsWith('PROGRESS_DATA::')) {
+                            try {
+                                const progress = JSON.parse(msg.replace('PROGRESS_DATA::', ''));
+                                updateLocalDataFromProgress(progress);
+                                localStorage.setItem('progress_data', JSON.stringify(progress));
+                                showCurrentWord();
+                                updateStatistics();
+                                console.log('Прогресс успешно загружен с сервера!');
+                            } catch(e) {
+                                console.error('Ошибка при разборе данных прогресса:', e);
+                            }
+                            received = true;
+                            document.getElementById('sync-overlay').style.display = 'none';
+                            showTrainerScreen();
+                            tg.offEvent && tg.offEvent('message', handler); // Убираем обработчик
+                        }
+                    };
+                    tg.onEvent('message', handler);
+                }
+                // Перестраховка — если не получили прогресс за 2.5 секунды — всё равно открываем
+                setTimeout(() => {
+                    if (!received) {
+                        document.getElementById('sync-overlay').style.display = 'none';
+                        showTrainerScreen();
+                    }
+                }, 2500);
+            }
+        });
+
         // Кнопка синхронизации
         document.getElementById('sync-button').onclick = forceSyncAll;
-        
+
         // Кнопка "Я знаю это слово"
         document.getElementById('known-button').onclick = async function() {
             const currentWordText = document.getElementById('current-word').textContent;
@@ -862,13 +933,13 @@
             }
             goToNextWord();
         };
-        
+
         // Кнопка "Продолжить" в модалке
         document.getElementById('continue-button').onclick = function() {
             document.getElementById('result-modal').classList.remove('show');
             goToNextWord();
         };
-        
+
         // Кнопка "Повторить все слова с ошибками"
         const repeatAllBtn = document.getElementById('repeat-all-button');
         if (repeatAllBtn) repeatAllBtn.onclick = function() {
